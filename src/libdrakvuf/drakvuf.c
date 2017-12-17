@@ -222,7 +222,8 @@ bool inject_trap_breakpoint(drakvuf_t drakvuf, drakvuf_trap_t* trap)
             const char* name = NULL;
             addr_t module_list = 0;
 
-            if (trap->breakpoint.pid == 4 || !strcmp(trap->breakpoint.proc, "System"))
+            if ( (trap->breakpoint.lookup_type == LOOKUP_PID && trap->breakpoint.pid == 4) ||
+                 (trap->breakpoint.lookup_type == LOOKUP_NAME && !strcmp(trap->breakpoint.proc, "System")) )
             {
 
                 pid = 4;
