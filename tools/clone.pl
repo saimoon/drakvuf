@@ -120,7 +120,7 @@ use warnings;
 ## Settings
 #
 # The LVM volume group
-our $lvm_vg = "t0vg";
+our $lvm_vg = "honeyse-xen";
 # Clone network bridge name
 our $clone_bridge = "xenbr1";
 # Vif script to pass to clone Xen config.
