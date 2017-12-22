@@ -736,13 +736,13 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     PRINT_DEBUG("KtmW32.dll!CreateTransaction: 0x%lx\n", doppelganging.createtransaction);
 */
 
-    doppelganging.loadlibrary = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "kernel32.dll", "LoadLibrary");
+    doppelganging.loadlibrary = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "kernel32.dll", "LoadLibraryA");
     if (!doppelganging.loadlibrary)
     {
-        PRINT_DEBUG("Failed to get address of kernel32.dll!LoadLibrary\n");
+        PRINT_DEBUG("Failed to get address of kernel32.dll!LoadLibraryA\n");
         goto done;
     }
-    PRINT_DEBUG("kernel32.dll!LoadLibrary: 0x%lx\n", doppelganging.loadlibrary);
+    PRINT_DEBUG("kernel32.dll!LoadLibraryA: 0x%lx\n", doppelganging.loadlibrary);
 
 
     doppelganging.cr3_event.type = REGISTER;
