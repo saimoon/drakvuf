@@ -131,7 +131,8 @@ struct doppelganging
     const char* rekall_profile;
     bool is32bit, hijacked;
     addr_t createprocessa;
-    addr_t ntcreatesection,createtransaction;
+    addr_t ntcreatesection, loadlibrary;
+//    addr_t createtransaction;
 
     addr_t process_info;
     x86_registers_t saved_regs;
@@ -226,6 +227,103 @@ struct kapc_64
 } __attribute__ ((packed));
 // was not packed
 
+
+//////////////////////////////
+bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info, char* dllname)
+{
+
+    vmi_instance_t vmi = doppelganging->vmi;
+    reg_t fsgs, rsp = info->regs->rsp;
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    addr_t stack_base, stack_limit;
+
+    fsgs = info->regs->gs_base;
+
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+
+    // Push input arguments on the stack
+    //CreateProcess(NULL, TARGETPROC, NULL, NULL, 0, CREATE_SUSPENDED, NULL, NULL, &si, pi))
+    // HMODULE WINAPI LoadLibrary( _In_ LPCTSTR lpFileName );
+
+    uint8_t nul8 = 0;
+    uint64_t nul64 = 0;
+
+    size_t len = strlen(dllname);
+    addr_t addr = rsp;
+    addr_t str_addr;
+
+
+    addr -= 0x8; // the stack has to be alligned to 0x8
+    // and we need a bit of extra buffer before the string for \0
+
+    // we just going to null out that extra space fully
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    // this string has to be aligned as well!
+    addr -= len + 0x8 - (len % 0x8);
+    str_addr = addr;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) dllname, NULL))
+        goto err;
+
+    // add null termination
+    ctx.addr = addr+len;
+    if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
+        goto err;
+
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+
+
+    // allocate 0x8 "homing space" for p1 on stack
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    //p1
+    info->regs->rcx = str_addr;
+    //p2
+    info->regs->rdx = 0;
+    //p3
+    info->regs->r8 = 0;
+    //p4
+    info->regs->r9 = 0;
+
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+    return 1;
+
+err:
+    PRINT_DEBUG("Failed to pass inputs to loadlibrary hijacked function!\n");
+    return 0;
+}
+//////////////////////////////
 
 bool pass_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
 {
@@ -503,13 +601,21 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
 
         // === start execution chain ===
+/*        
         if ( !pass_inputs(doppelganging, info) )
         {
             PRINT_DEBUG("Failed to setup stack for passing inputs!\n");
             return 0;
         }
+*/
+        if ( !loadlibrary_inputs(doppelganging, info, "KtmW32.dll") )
+        {
+            PRINT_DEBUG("Failed to setup stack for LoadLibrary("KtmW32.dll")!\n");
+            return 0;
+        }
+        
 
-        info->regs->rip = doppelganging->createprocessa;
+        info->regs->rip = doppelganging->loadlibrary;
 
         doppelganging->hijacked = 1;
 
@@ -619,6 +725,7 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     }
     PRINT_DEBUG("ntdll.dll!NtCreateSection: 0x%lx\n", doppelganging.ntcreatesection);
 
+/*
     // CreateTransaction
     doppelganging.createtransaction = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "KtmW32.dll", "CreateTransaction");
     if (!doppelganging.createtransaction)
@@ -627,7 +734,15 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         goto done;
     }
     PRINT_DEBUG("KtmW32.dll!CreateTransaction: 0x%lx\n", doppelganging.createtransaction);
+*/
 
+    doppelganging.loadlibrary = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "kernel32.dll", "LoadLibrary");
+    if (!doppelganging.loadlibrary)
+    {
+        PRINT_DEBUG("Failed to get address of kernel32.dll!LoadLibrary\n");
+        goto done;
+    }
+    PRINT_DEBUG("kernel32.dll!LoadLibrary: 0x%lx\n", doppelganging.loadlibrary);
 
 
     doppelganging.cr3_event.type = REGISTER;
@@ -642,6 +757,11 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
 
     drakvuf_pause(drakvuf);
     drakvuf_remove_trap(drakvuf, &doppelganging.cr3_event, NULL);
+
+
+    // CreateTransaction
+    addr_t createtransaction = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "KtmW32.dll", "CreateTransaction");
+    PRINT_DEBUG("--> KtmW32.dll!CreateTransaction: 0x%lx\n", createtransaction);
 
 done:
     PRINT_DEBUG("Finished with injection. Ret: %i\n", doppelganging.rc);
