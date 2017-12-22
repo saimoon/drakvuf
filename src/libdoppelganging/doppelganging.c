@@ -136,7 +136,6 @@ struct doppelganging
     x86_registers_t saved_regs;
 
     drakvuf_trap_t bp, cr3_event;
-    GSList* memtraps;
 
     size_t offsets[OFFSET_MAX];
 
@@ -149,27 +148,6 @@ struct doppelganging
 
 #define SW_SHOWDEFAULT 10
 
-struct startup_info_32
-{
-    uint32_t cb;
-    uint32_t lpReserved;
-    uint32_t lpDesktop;
-    uint32_t lpTitle;
-    uint32_t dwX;
-    uint32_t dwY;
-    uint32_t dwXSize;
-    uint32_t dwYSize;
-    uint32_t dwXCountChars;
-    uint32_t dwYCountChars;
-    uint32_t dwFillAttribute;
-    uint32_t dwFlags;
-    uint16_t wShowWindow;
-    uint16_t cbReserved2;
-    uint32_t lpReserved2;
-    uint32_t hStdInput;
-    uint32_t hStdOutput;
-    uint32_t hStdError;
-};
 
 struct startup_info_64
 {
@@ -191,15 +169,8 @@ struct startup_info_64
     addr_t hStdInput;
     addr_t hStdOutput;
     addr_t hStdError;
-};
-
-struct process_information_32
-{
-    uint32_t hProcess;
-    uint32_t hThread;
-    uint32_t dwProcessId;
-    uint32_t dwThreadId;
 } __attribute__ ((packed));
+// was not packed
 
 struct process_information_64
 {
@@ -221,17 +192,6 @@ struct list_entry_64
     uint64_t blink;
 } __attribute__ ((packed));
 
-struct kapc_state_32
-{
-    // apc_list_head[0] = kernel apc list
-    // apc_list_head[1] = user apc list
-    struct list_entry_32 apc_list_head[2];
-    uint32_t process;
-    uint8_t kernel_apc_in_progress;
-    uint8_t kernel_apc_pending;
-    uint8_t user_apc_pending;
-} __attribute__ ((packed));
-
 struct kapc_state_64
 {
     // apc_list_head[0] = kernel apc list
@@ -241,27 +201,8 @@ struct kapc_state_64
     uint8_t kernel_apc_in_progress;
     uint8_t kernel_apc_pending;
     uint8_t user_apc_pending;
-};
-
-struct kapc_32
-{
-    uint8_t type;
-    uint8_t spare_byte0;
-    uint8_t size;
-    uint8_t spare_byte1;
-    uint32_t spare_long0;
-    uint32_t thread;
-    struct list_entry_32 apc_list_entry;
-    uint32_t kernel_routine;
-    uint32_t rundown_routine;
-    uint32_t normal_routine;
-    uint32_t normal_context;
-    uint32_t system_argument_1;
-    uint32_t system_argument_2;
-    uint8_t apc_state_index;
-    uint8_t apc_mode;
-    uint8_t inserted;
 } __attribute__ ((packed));
+// was not packed
 
 struct kapc_64
 {
@@ -281,7 +222,9 @@ struct kapc_64
     uint8_t apc_state_index;
     uint8_t apc_mode;
     uint8_t inserted;
-};
+} __attribute__ ((packed));
+// was not packed
+
 
 bool pass_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
 {
@@ -296,10 +239,7 @@ bool pass_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
 
     addr_t stack_base, stack_limit;
 
-    if (doppelganging->is32bit)
-        fsgs = info->regs->fs_base;
-    else
-        fsgs = info->regs->gs_base;
+    fsgs = info->regs->gs_base;
 
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
@@ -320,235 +260,122 @@ bool pass_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
 
     addr_t str_addr, sip_addr;
 
-    if (doppelganging->is32bit)
-    {
+    addr -= 0x8; // the stack has to be alligned to 0x8
+    // and we need a bit of extra buffer before the string for \0
 
-        addr -= 0x4; // the stack has to be alligned to 0x4
-        // and we need a bit of extra buffer before the string for \0
-        // we just going to null out that extra space fully
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, &nul32))
-            goto err;
+    // we just going to null out that extra space fully
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
 
-        // this string has to be aligned as well!
-        addr -= len + 0x4 - (len % 0x4);
-        str_addr = addr;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) doppelganging->target_proc, NULL))
-            goto err;
+    // this string has to be aligned as well!
+    addr -= len + 0x8 - (len % 0x8);
+    str_addr = addr;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) doppelganging->target_proc, NULL))
+        goto err;
 
-        // add null termination
-        ctx.addr = addr + len;
-        if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
-            goto err;
+    // add null termination
+    ctx.addr = addr+len;
+    if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
+        goto err;
 
-        //struct startup_info_32 si = {.wShowWindow = SW_SHOWDEFAULT };
-        struct startup_info_32 si;
-        memset(&si, 0, sizeof(struct startup_info_32));
-        struct process_information_32 pi;
-        memset(&pi, 0, sizeof(struct process_information_32));
+    struct startup_info_64 si;
+    memset(&si, 0, sizeof(struct startup_info_64));
+    struct process_information_64 pi;
+    memset(&pi, 0, sizeof(struct process_information_64));
 
-        len = sizeof(struct process_information_32);
-        addr -= len;
-        doppelganging->process_info = addr;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &pi, NULL))
-            goto err;
+    len = sizeof(struct process_information_64);
+    addr -= len;
+    doppelganging->process_info = addr;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &pi, NULL))
+        goto err;
 
-        len = sizeof(struct startup_info_32);
-        addr -= len;
-        sip_addr = addr;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &si, NULL))
-            goto err;
+    len = sizeof(struct startup_info_64);
+    addr -= len;
+    sip_addr = addr;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &si, NULL))
+        goto err;
 
-        //p10
-        addr -= 0x4;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, (uint32_t*) &doppelganging->process_info))
-            goto err;
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
 
-        //p9
-        addr -= 0x4;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, (uint32_t*) &sip_addr))
-            goto err;
+    //p10
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->process_info))
+        goto err;
 
-        //p8
-        addr -= 0x4;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, &nul32))
-            goto err;
+    //p9
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &sip_addr))
+        goto err;
 
-        //p7
-        addr -= 0x4;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, &nul32))
-            goto err;
+    //p8
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
 
-        //p6
-        addr -= 0x4;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, &nul32))
-            goto err;
+    //p7
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
 
-        //p5
-        addr -= 0x4;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, &nul32))
-            goto err;
+    //p6
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
 
-        //p4
-        addr -= 0x4;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, &nul32))
-            goto err;
+    //p5
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
 
-        //p3
-        addr -= 0x4;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, &nul32))
-            goto err;
+    // allocate 0x20 "homing space"
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
 
-        //p2
-        addr -= 0x4;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, (uint32_t*) &str_addr))
-            goto err;
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
 
-        //p1
-        addr -= 0x4;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, &nul32))
-            goto err;
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
 
-        // save the return address
-        addr -= 0x4;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_32(vmi, &ctx, (uint32_t*) &info->regs->rip))
-            goto err;
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
 
-    }
-    else
-    {
+    //p1
+    info->regs->rcx = 0;
+    //p2
+    info->regs->rdx = str_addr;
+    //p3
+    info->regs->r8 = 0;
+    //p4
+    info->regs->r9 = 0;
 
-        addr -= 0x8; // the stack has to be alligned to 0x8
-        // and we need a bit of extra buffer before the string for \0
-
-        // we just going to null out that extra space fully
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-            goto err;
-
-        // this string has to be aligned as well!
-        addr -= len + 0x8 - (len % 0x8);
-        str_addr = addr;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) doppelganging->target_proc, NULL))
-            goto err;
-
-        // add null termination
-        ctx.addr = addr+len;
-        if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
-            goto err;
-
-        struct startup_info_64 si;
-        memset(&si, 0, sizeof(struct startup_info_64));
-        struct process_information_64 pi;
-        memset(&pi, 0, sizeof(struct process_information_64));
-
-        len = sizeof(struct process_information_64);
-        addr -= len;
-        doppelganging->process_info = addr;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &pi, NULL))
-            goto err;
-
-        len = sizeof(struct startup_info_64);
-        addr -= len;
-        sip_addr = addr;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &si, NULL))
-            goto err;
-
-        //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
-        //
-        //First 4 parameters to functions are always passed in registers
-        //P1=rcx, P2=rdx, P3=r8, P4=r9
-        //5th parameter onwards (if any) passed via the stack
-
-        //p10
-        addr -= 0x8;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->process_info))
-            goto err;
-
-        //p9
-        addr -= 0x8;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &sip_addr))
-            goto err;
-
-        //p8
-        addr -= 0x8;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-            goto err;
-
-        //p7
-        addr -= 0x8;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-            goto err;
-
-        //p6
-        addr -= 0x8;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-            goto err;
-
-        //p5
-        addr -= 0x8;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-            goto err;
-
-        // allocate 0x20 "homing space"
-        addr -= 0x8;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-            goto err;
-
-        addr -= 0x8;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-            goto err;
-
-        addr -= 0x8;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-            goto err;
-
-        addr -= 0x8;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-            goto err;
-
-        //p1
-        info->regs->rcx = 0;
-        //p2
-        info->regs->rdx = str_addr;
-        //p3
-        info->regs->r8 = 0;
-        //p4
-        info->regs->r9 = 0;
-
-        // save the return address
-        addr -= 0x8;
-        ctx.addr = addr;
-        if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
-            goto err;
-    }
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
 
     // Grow the stack
     info->regs->rsp = addr;
@@ -560,75 +387,7 @@ err:
     return 0;
 }
 
-event_response_t mem_callback(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
-{
-    struct doppelganging* doppelganging = info->trap->data;
-
-    if ( info->regs->cr3 != doppelganging->target_cr3 )
-    {
-        PRINT_DEBUG("MemX received but CR3 (0x%lx) doesn't match target process (0x%lx)\n",
-                    info->regs->cr3, doppelganging->target_cr3);
-        return 0;
-    }
-
-    PRINT_DEBUG("MemX at 0x%lx\n", info->regs->rip);
-
-    /* We might have already hijacked a thread on another vCPU */
-    if (doppelganging->hijacked)
-        return 0;
-
-    GSList* loop = doppelganging->memtraps;
-    while (loop)
-    {
-        drakvuf_remove_trap(drakvuf, loop->data, (drakvuf_trap_free_t)free);
-        loop=loop->next;
-    }
-    g_slist_free(doppelganging->memtraps);
-    doppelganging->memtraps = NULL;
-
-    memcpy(&doppelganging->saved_regs, info->regs, sizeof(x86_registers_t));
-
-    if (!pass_inputs(doppelganging, info))
-    {
-        PRINT_DEBUG("Failed to setup stack for passing inputs!\n");
-        return 0;
-    }
-
-    doppelganging->bp.type = BREAKPOINT;
-    doppelganging->bp.name = "ret";
-    doppelganging->bp.cb = doppelganging_int3_cb;
-    doppelganging->bp.data = doppelganging;
-    doppelganging->bp.breakpoint.lookup_type = LOOKUP_DTB;
-    doppelganging->bp.breakpoint.dtb = info->regs->cr3;
-    doppelganging->bp.breakpoint.addr_type = ADDR_VA;
-    doppelganging->bp.breakpoint.addr = info->regs->rip;
-
-    if ( !drakvuf_add_trap(drakvuf, &doppelganging->bp) )
-    {
-        fprintf(stderr, "Failed to trap return location of injected function call @ 0x%lx!\n",
-                doppelganging->bp.breakpoint.addr);
-        return 0;
-    }
-
-    if ( !doppelganging->target_tid )
-    {
-        uint32_t threadid = 0;
-        if ( !drakvuf_get_current_thread_id(doppelganging->drakvuf, info->vcpu, &threadid) || !threadid )
-            return 0;
-
-        doppelganging->target_tid = threadid;
-    }
-
-    PRINT_DEBUG("Stack setup finished and return trap added @ 0x%" PRIx64 "\n",
-                doppelganging->bp.breakpoint.addr);
-
-    info->regs->rip = doppelganging->createprocessa;
-    doppelganging->hijacked = 1;
-
-    return VMI_EVENT_RESPONSE_SET_REGISTERS;
-}
-
-event_response_t cr3_callback(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
+event_response_t dg_cr3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 {
 
     struct doppelganging* doppelganging = info->trap->data;
@@ -660,95 +419,57 @@ event_response_t cr3_callback(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     /*
      * At this point the process is still in kernel mode, so
      * we need to trap when it enters into user mode.
-     * For this we use different mechanisms on 32-bit and 64-bit.
-     * The reason for this is that the same methods are not equally
-     * reliably.
      *
      * For 64-bit Windows we use the trapframe approach, where we read
      * the saved RIP from the stack trap frame and trap it.
-     * When this address is hit, we hijack the flow and afterwards return
-     * the registers to the original values, thus the process continues to run.
-     * This method is workable on 32-bit Windows as well but finding the trapframe
-     * sometimes fail for yet unknown reasons.
+     * When this address is hit, we hijack the flow, starting a chain of commands
+     * needed to doppelganging.
+     * Afterwards return the registers to the original values, thus the process continues to run.
      */
-    if (!doppelganging->is32bit)
+    addr_t trapframe = 0;
+    status = vmi_read_addr_va(doppelganging->vmi,
+                              thread + doppelganging->offsets[KTHREAD_TRAPFRAME],
+                              0, &trapframe);
+
+    if (status == VMI_FAILURE || !trapframe)
     {
+        PRINT_DEBUG("cr3_cb: failed to read trapframe (0x%lx)\n", trapframe);
+        return 0;
+    }
 
-        addr_t trapframe = 0;
-        status = vmi_read_addr_va(doppelganging->vmi,
-                                  thread + doppelganging->offsets[KTHREAD_TRAPFRAME],
-                                  0, &trapframe);
+    status = vmi_read_addr_va(doppelganging->vmi,
+                              trapframe + doppelganging->offsets[KTRAP_FRAME_RIP],
+                              0, &doppelganging->bp.breakpoint.addr);
 
-        if (status == VMI_FAILURE || !trapframe)
-        {
-            PRINT_DEBUG("cr3_cb: failed to read trapframe (0x%lx)\n", trapframe);
-            return 0;
-        }
+    if (status == VMI_FAILURE || !doppelganging->bp.breakpoint.addr)
+    {
+        PRINT_DEBUG("Failed to read RIP from trapframe or RIP is NULL!\n");
+        return 0;
+    }
 
-        status = vmi_read_addr_va(doppelganging->vmi,
-                                  trapframe + doppelganging->offsets[KTRAP_FRAME_RIP],
-                                  0, &doppelganging->bp.breakpoint.addr);
+    doppelganging->bp.type = BREAKPOINT;
+    doppelganging->bp.name = "entry";
+    doppelganging->bp.cb = dg_int3_cb;
+    doppelganging->bp.data = doppelganging;
+    doppelganging->bp.breakpoint.lookup_type = LOOKUP_DTB;
+    doppelganging->bp.breakpoint.dtb = cr3;
+    doppelganging->bp.breakpoint.addr_type = ADDR_VA;
 
-        if (status == VMI_FAILURE || !doppelganging->bp.breakpoint.addr)
-        {
-            PRINT_DEBUG("Failed to read RIP from trapframe or RIP is NULL!\n");
-            return 0;
-        }
+    if ( drakvuf_add_trap(drakvuf, &doppelganging->bp) )
+    {
+        PRINT_DEBUG("Got return address 0x%lx from trapframe and it's now trapped!\n",
+                    doppelganging->bp.breakpoint.addr);
 
-        doppelganging->bp.type = BREAKPOINT;
-        doppelganging->bp.name = "entry";
-        doppelganging->bp.cb = doppelganging_int3_cb;
-        doppelganging->bp.data = doppelganging;
-        doppelganging->bp.breakpoint.lookup_type = LOOKUP_DTB;
-        doppelganging->bp.breakpoint.dtb = cr3;
-        doppelganging->bp.breakpoint.addr_type = ADDR_VA;
-
-        if ( drakvuf_add_trap(drakvuf, &doppelganging->bp) )
-        {
-            PRINT_DEBUG("Got return address 0x%lx from trapframe and it's now trapped!\n",
-                        doppelganging->bp.breakpoint.addr);
-
-            // Unsubscribe from the CR3 trap
-            drakvuf_remove_trap(drakvuf, info->trap, NULL);
-        }
-        else
-            fprintf(stderr, "Failed to trap trapframe return address\n");
+        // Unsubscribe from the CR3 trap
+        drakvuf_remove_trap(drakvuf, info->trap, NULL);
     }
     else
-    {
-        GSList* va_pages = vmi_get_va_pages(doppelganging->vmi, info->regs->cr3);
-        GSList* loop = va_pages;
-        drakvuf_pause(drakvuf);
-        while (loop)
-        {
-            page_info_t* page = loop->data;
-            if (page->vaddr < 0x80000000 && USER_SUPERVISOR(page->x86_pae.pte_value))
-            {
-                drakvuf_trap_t* new_trap = g_malloc0(sizeof(drakvuf_trap_t));
-                new_trap->type = MEMACCESS;
-                new_trap->cb = mem_callback;
-                new_trap->data = doppelganging;
-                new_trap->memaccess.access = VMI_MEMACCESS_X;
-                new_trap->memaccess.type = POST;
-                new_trap->memaccess.gfn = page->paddr >> 12;
-                doppelganging->memtraps = g_slist_prepend(doppelganging->memtraps, new_trap);
-                if ( drakvuf_add_trap(doppelganging->drakvuf, new_trap) )
-                    doppelganging->memtraps = g_slist_prepend(doppelganging->memtraps, new_trap);
-                else
-                    g_free(new_trap);
-            }
-            g_free(page);
-            loop = loop->next;
-        }
-        g_slist_free(va_pages);
-        drakvuf_remove_trap(drakvuf, info->trap, NULL);
-        drakvuf_resume(drakvuf);
-    }
+        fprintf(stderr, "Failed to trap trapframe return address\n");
 
     return 0;
 }
 
-event_response_t doppelganging_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
+event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 {
     struct doppelganging* doppelganging = info->trap->data;
     reg_t cr3 = info->regs->cr3;
@@ -773,12 +494,15 @@ event_response_t doppelganging_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* i
     if ( !drakvuf_get_current_thread_id(doppelganging->drakvuf, info->vcpu, &threadid) || !threadid )
         return 0;
 
-    if ( !doppelganging->is32bit && !doppelganging->hijacked && info->regs->rip == doppelganging->bp.breakpoint.addr )
+    if ( !doppelganging->hijacked && info->regs->rip == doppelganging->bp.breakpoint.addr )
     {
-        /* We just hit the RIP from the trapframe */
+        // We just hit the RIP from the trapframe
 
+        // save all regs
         memcpy(&doppelganging->saved_regs, info->regs, sizeof(x86_registers_t));
 
+
+        // === start execution chain ===
         if ( !pass_inputs(doppelganging, info) )
         {
             PRINT_DEBUG("Failed to setup stack for passing inputs!\n");
@@ -809,27 +533,13 @@ event_response_t doppelganging_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* i
     {
         ctx.addr = doppelganging->process_info;
 
-        if (doppelganging->is32bit)
+        struct process_information_64 pip = { 0 };
+        if ( VMI_SUCCESS == vmi_read(doppelganging->vmi, &ctx, sizeof(struct process_information_64), &pip, NULL) )
         {
-            struct process_information_32 pip = { 0 };
-            if ( VMI_SUCCESS == vmi_read(doppelganging->vmi, &ctx, sizeof(struct process_information_32), &pip, NULL) )
-            {
-                doppelganging->pid = pip.dwProcessId;
-                doppelganging->tid = pip.dwThreadId;
-                doppelganging->hProc = pip.hProcess;
-                doppelganging->hThr = pip.hThread;
-            }
-        }
-        else
-        {
-            struct process_information_64 pip = { 0 };
-            if ( VMI_SUCCESS == vmi_read(doppelganging->vmi, &ctx, sizeof(struct process_information_64), &pip, NULL) )
-            {
-                doppelganging->pid = pip.dwProcessId;
-                doppelganging->tid = pip.dwThreadId;
-                doppelganging->hProc = pip.hProcess;
-                doppelganging->hThr = pip.hThread;
-            }
+            doppelganging->pid = pip.dwProcessId;
+            doppelganging->tid = pip.dwThreadId;
+            doppelganging->hProc = pip.hProcess;
+            doppelganging->hThr = pip.hThread;
         }
 
         if (doppelganging->pid && doppelganging->tid)
@@ -860,6 +570,14 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     doppelganging.target_proc = app;
 
     doppelganging.is32bit = (vmi_get_page_mode(doppelganging.vmi, 0) == VMI_PM_IA32E) ? 0 : 1;
+
+    // initially, only for 64bit arch
+    if (doppelganging.is32bit)
+    {
+        PRINT_DEBUG("Unsupported arch: 32bit\n");
+        goto done;        
+    }
+
     if ( VMI_FAILURE == vmi_pid_to_dtb(doppelganging.vmi, pid, &doppelganging.target_cr3) )
     {
         PRINT_DEBUG("Unable to find target PID's DTB\n");
@@ -893,24 +611,13 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
 
     doppelganging.cr3_event.type = REGISTER;
     doppelganging.cr3_event.reg = CR3;
-    doppelganging.cr3_event.cb = cr3_callback;
+    doppelganging.cr3_event.cb = dg_cr3_cb;
     doppelganging.cr3_event.data = &doppelganging;
     if ( !drakvuf_add_trap(drakvuf, &doppelganging.cr3_event) )
         goto done;
 
     PRINT_DEBUG("Starting injection loop\n");
     drakvuf_loop(drakvuf);
-
-    if (doppelganging.is32bit)
-    {
-        GSList* loop = doppelganging.memtraps;
-        while (loop)
-        {
-            drakvuf_remove_trap(drakvuf, loop->data, (drakvuf_trap_free_t)free);
-            loop=loop->next;
-        }
-        g_slist_free(loop);
-    }
 
     drakvuf_pause(drakvuf);
     drakvuf_remove_trap(drakvuf, &doppelganging.cr3_event, NULL);
