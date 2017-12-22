@@ -131,6 +131,7 @@ struct doppelganging
     const char* rekall_profile;
     bool is32bit, hijacked;
     addr_t createprocessa;
+    addr_t ntcreatesection,createtransaction;
 
     addr_t process_info;
     x86_registers_t saved_regs;
@@ -610,8 +611,23 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     }
 
     // NtCreateSection
-    addr_t ntcreatesection = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "ntdll.dll", "NtCreateSection");
+    doppelganging.ntcreatesection = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "ntdll.dll", "NtCreateSection");
+    if (!doppelganging.ntcreatesection)
+    {
+        PRINT_DEBUG("Failed to get address of ntdll.dll!NtCreateSection\n");
+        goto done;
+    }
     PRINT_DEBUG("ntdll.dll!NtCreateSection: 0x%lx\n", ntcreatesection);
+
+    // CreateTransaction
+    doppelganging.createtransaction = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "KtmW32.dll", "CreateTransaction");
+    if (!doppelganging.createtransaction)
+    {
+        PRINT_DEBUG("Failed to get address of KtmW32.dll!CreateTransaction\n");
+        goto done;
+    }
+    PRINT_DEBUG("KtmW32.dll!CreateTransaction: 0x%lx\n", createtransaction);
+
 
 
     doppelganging.cr3_event.type = REGISTER;
