@@ -229,7 +229,7 @@ struct kapc_64
 
 
 //////////////////////////////
-bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info, char* dllname)
+bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info, const char* dllname)
 {
 
     vmi_instance_t vmi = doppelganging->vmi;
@@ -638,6 +638,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
     PRINT_DEBUG("RAX: 0x%lx\n", info->regs->rax);
 
+/*
     if (info->regs->rax)
     {
         ctx.addr = doppelganging->process_info;
@@ -662,7 +663,9 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             doppelganging->rc = 0;
         }
     }
+*/
 
+    
     memcpy(info->regs, &doppelganging->saved_regs, sizeof(x86_registers_t));
     return VMI_EVENT_RESPONSE_SET_REGISTERS;
 }
