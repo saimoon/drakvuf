@@ -572,11 +572,13 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     struct doppelganging* doppelganging = info->trap->data;
     reg_t cr3 = info->regs->cr3;
 
+/*
     access_context_t ctx =
     {
         .translate_mechanism = VMI_TM_PROCESS_DTB,
         .dtb = cr3,
     };
+*/
 
     PRINT_DEBUG("INT3 Callback @ 0x%lx. CR3 0x%lx.\n",
                 info->regs->rip, cr3);
@@ -742,6 +744,7 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     PRINT_DEBUG("KtmW32.dll!CreateTransaction: 0x%lx\n", doppelganging.createtransaction);
 */
 
+    // "GetModuleHandleA" worked well. Check possible "LoadLibraryA" error using DWORD WINAPI GetLastError(void)
     doppelganging.loadlibrary = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "kernel32.dll", "LoadLibraryA");
     if (!doppelganging.loadlibrary)
     {
