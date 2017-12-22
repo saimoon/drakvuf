@@ -617,7 +617,7 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         PRINT_DEBUG("Failed to get address of ntdll.dll!NtCreateSection\n");
         goto done;
     }
-    PRINT_DEBUG("ntdll.dll!NtCreateSection: 0x%lx\n", ntcreatesection);
+    PRINT_DEBUG("ntdll.dll!NtCreateSection: 0x%lx\n", doppelganging.ntcreatesection);
 
     // CreateTransaction
     doppelganging.createtransaction = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "KtmW32.dll", "CreateTransaction");
@@ -626,7 +626,7 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         PRINT_DEBUG("Failed to get address of KtmW32.dll!CreateTransaction\n");
         goto done;
     }
-    PRINT_DEBUG("KtmW32.dll!CreateTransaction: 0x%lx\n", createtransaction);
+    PRINT_DEBUG("KtmW32.dll!CreateTransaction: 0x%lx\n", doppelganging.createtransaction);
 
 
 
