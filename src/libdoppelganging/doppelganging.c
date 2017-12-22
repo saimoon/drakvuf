@@ -602,12 +602,18 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     if ( !drakvuf_find_process(doppelganging.drakvuf, pid, NULL, &eprocess_base) )
         goto done;
 
+    // CreateProcessA
     doppelganging.createprocessa = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "kernel32.dll", "CreateProcessA");
     if (!doppelganging.createprocessa)
     {
         PRINT_DEBUG("Failed to get address of kernel32.dll!CreateProcessA\n");
         goto done;
     }
+
+    // NtCreateSection
+    addr_t ntcreatesection = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "ntdll.dll", "NtCreateSection");
+    PRINT_DEBUG("ntdll.dll!NtCreateSection: 0x%lx\n", ntcreatesection);
+
 
     doppelganging.cr3_event.type = REGISTER;
     doppelganging.cr3_event.reg = CR3;
