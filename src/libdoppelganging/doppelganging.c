@@ -292,13 +292,13 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
 
-
+/*
     // allocate 0x8 "homing space" for p1 on stack
     addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
-
+*/
     //p1
     info->regs->rcx = str_addr;
     //p2
@@ -585,6 +585,9 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     {
         PRINT_DEBUG("INT3 received but CR3 (0x%lx) doesn't match target process (0x%lx)\n",
                     cr3, doppelganging->target_cr3);
+        vmi_pid_t current_pid = -1;
+        vmi_dtb_to_pid(doppelganging->vmi, cr3, &current_pid);
+        PRINT_DEBUG("Current CR3 (0x%lx) is PID %d on VCPU=%d\n", cr3, current_pid, info->vcpu);
         return 0;
     }
 
@@ -608,7 +611,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             return 0;
         }
 */
-        if ( !loadlibrary_inputs(doppelganging, info, "KtmW32.dll") )
+        if ( !loadlibrary_inputs(doppelganging, info, "ktmw32.dll") )
         {
             PRINT_DEBUG("Failed to setup stack for LoadLibrary(KtmW32.dll)!\n");
             return 0;
