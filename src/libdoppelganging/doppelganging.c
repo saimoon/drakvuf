@@ -253,7 +253,6 @@ bool pass_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
     //CreateProcess(NULL, TARGETPROC, NULL, NULL, 0, CREATE_SUSPENDED, NULL, NULL, &si, pi))
 
     uint64_t nul64 = 0;
-    uint32_t nul32 = 0;
     uint8_t nul8 = 0;
     size_t len = strlen(doppelganging->target_proc);
     addr_t addr = rsp;
