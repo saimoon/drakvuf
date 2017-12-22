@@ -610,7 +610,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 */
         if ( !loadlibrary_inputs(doppelganging, info, "KtmW32.dll") )
         {
-            PRINT_DEBUG("Failed to setup stack for LoadLibrary("KtmW32.dll")!\n");
+            PRINT_DEBUG("Failed to setup stack for LoadLibrary(KtmW32.dll)!\n");
             return 0;
         }
         
