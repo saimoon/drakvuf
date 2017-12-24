@@ -132,8 +132,7 @@ struct doppelganging
     bool is32bit;
     int hijacked_status;
     addr_t createprocessa;
-    addr_t ntcreatesection, loadlibrary, getlasterror;
-//    addr_t createtransaction;
+    addr_t ntcreatesection, loadlibrary, getlasterror, createtransaction;
 
     addr_t process_info;
     x86_registers_t saved_regs;
@@ -288,7 +287,7 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) dllname, NULL))
         goto err;
-    PRINT_DEBUG("Copied string: %s (len %d) on stack\n", dllname, len);
+    PRINT_DEBUG("Copied string: %s (len 0x%lx) on stack\n", dllname, len);
 
     // add null termination
     ctx.addr = addr+len;
@@ -301,13 +300,28 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     //First 4 parameters to functions are always passed in registers
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
-/*
+
     // allocate 0x8 "homing space" for p1 on stack
     addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
-*/
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
     //p1
     info->regs->rcx = str_addr;
 /*    
@@ -571,6 +585,9 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     if ( doppelganging->hijacked_status == CALL_LOADLIBRARY && 
          info->regs->rip == doppelganging->bp.breakpoint.addr )
     {
+        // print LoadLibraryA return code
+        PRINT_DEBUG("LoadLibraryA RAX: 0x%lx\n", info->regs->rax);
+
         // === start execution chain ===
 
         // setup stack for GetLastError function call
@@ -722,8 +739,14 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
 
 
     // CreateTransaction
-    addr_t createtransaction = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "KtmW32.dll", "CreateTransaction");
-    PRINT_DEBUG("--> KtmW32.dll!CreateTransaction: 0x%lx\n", createtransaction);
+    doppelganging.createtransaction = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "ktmw32.dll", "CreateTransaction");
+    if (!doppelganging.createtransaction)
+    {
+        PRINT_DEBUG("Failed to get address of ktmw32.dll!CreateTransaction\n");
+        goto done;
+    }
+    PRINT_DEBUG("--> ktmw32.dll!CreateTransaction: 0x%lx\n", doppelganging.createtransaction);
+    doppelganging.rc = 1;
 
 
     // close, remove traps and release vmi
