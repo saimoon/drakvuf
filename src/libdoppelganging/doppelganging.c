@@ -288,6 +288,7 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) dllname, NULL))
         goto err;
+    PRINT_DEBUG("Copied string: %s (len %d) on stack\n", dllname, len);
 
     // add null termination
     ctx.addr = addr+len;
@@ -300,22 +301,24 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     //First 4 parameters to functions are always passed in registers
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
-
+/*
     // allocate 0x8 "homing space" for p1 on stack
     addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
-
+*/
     //p1
     info->regs->rcx = str_addr;
+/*    
     //p2
     info->regs->rdx = 0;
     //p3
     info->regs->r8 = 0;
     //p4
     info->regs->r9 = 0;
-
+*/
+    
     // save the return address
     addr -= 0x8;
     ctx.addr = addr;
