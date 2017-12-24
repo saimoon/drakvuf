@@ -119,24 +119,26 @@ static void close_handler(int sig)
 
 int main(int argc, char** argv)
 {
-    if (argc < 5)
+    if (argc < 6)
     {
-        printf("Usage: %s <rekall profile> <domain> <pid> <app> [tid]\n", argv[0]);
+        printf("Usage: %s <rekall profile> <domain> <pid> <localprocname> <app> [tid]\n", argv[0]);
         printf("\t<required> [optional]\n");
         return 1;
     }
 
     int rc = 0;
+
     const char* rekall_profile = argv[1];
     const char* domain = argv[2];
     vmi_pid_t pid = atoi(argv[3]);
+    char* lproc = argv[4];
+    char* app = argv[5];
+
     uint32_t tid = 0;
-    char* app = argv[4];
-    bool verbose = 0;
-
     if ( argc == 6 )
-        tid = atoi(argv[5]);
+        tid = atoi(argv[6]);
 
+    bool verbose = 0;
 #ifdef DRAKVUF_DEBUG
     verbose = 1;
 #endif
@@ -157,10 +159,10 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    if (pid > 0 && app)
+    if (pid > 0 && app && lproc)
     {
-        printf("Doppelganging starting %s through PID %u TID: %u\n", app, pid, tid);
-        int injection_result = doppelganging_start_app(drakvuf, pid, tid, app);
+        printf("Doppelganging starting %s as proc %s through PID %u TID: %u\n", app, lproc, pid, tid);
+        int injection_result = doppelganging_start_app(drakvuf, pid, tid, lproc, app);
 
         if (!injection_result)
         {

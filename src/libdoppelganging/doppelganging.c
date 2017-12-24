@@ -121,6 +121,7 @@ struct doppelganging
 {
     // Inputs:
     const char* target_proc;
+    const char* local_proc;
     reg_t target_cr3;
     vmi_pid_t target_pid;
     uint32_t target_tid;
@@ -301,7 +302,7 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
 
-    // allocate 0x8 "homing space" for p1 on stack
+    // WARNING: allocate MIN 0x10 "homing space" on stack or call will crash
     addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
@@ -312,6 +313,7 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
 
+/*
     addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
@@ -321,6 +323,7 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
+*/
 
     //p1
     info->regs->rcx = str_addr;
@@ -348,6 +351,166 @@ err:
     PRINT_DEBUG("Failed to pass inputs to loadlibrary hijacked function!\n");
     return 0;
 }
+
+
+
+/*
+    Create stack to call CreateTransaction
+
+    HANDLE WINAPI CreateTransaction(
+      _In_opt_ LPSECURITY_ATTRIBUTES lpTransactionAttributes,
+      _In_opt_ LPGUID                UOW,
+      _In_opt_ DWORD                 CreateOptions,
+      _In_opt_ DWORD                 IsolationLevel,
+      _In_opt_ DWORD                 IsolationFlags,
+      _In_opt_ DWORD                 Timeout,
+      _In_opt_ LPWSTR                Description
+    );
+
+    Example:
+
+    HANDLE hTransaction = CreateTransaction(NULL,0,0,0,0,0,L"explorer.exe");
+*/
+bool createtransaction_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+
+    // Push input arguments on the stack
+    uint8_t nul8 = 0;
+    uint64_t nul64 = 0;
+    addr_t str_addr;
+
+    // stack start here
+    addr_t addr = rsp;
+
+
+    addr -= 0x8; // the stack has to be alligned to 0x8
+    // and we need a bit of extra buffer before the string for \0
+
+    // we just going to null out that extra space fully
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    // this string has to be aligned as well
+    size_t len = strlen(doppelganging->local_proc);
+    addr -= len + 0x8 - (len % 0x8);
+    str_addr = addr;    // string address
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) doppelganging->local_proc, NULL))
+        goto err;
+    PRINT_DEBUG("Copied string: %s (len 0x%lx) on stack\n", doppelganging->local_proc, len);
+
+    // add null termination
+    ctx.addr = addr+len;
+    if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
+        goto err;
+
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+
+    // p7
+    // _In_opt_ LPWSTR Description 
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &str_addr))
+        goto err;
+
+    // p6
+    // _In_opt_ DWORD Timeout,
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    // p5
+    // _In_opt_ DWORD IsolationFlags 
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // p1: _In_opt_ LPSECURITY_ATTRIBUTES lpTransactionAttributes
+    info->regs->rcx = 0;
+
+    // p2: _In_opt_ LPGUID UOW
+    info->regs->rdx = 0;
+
+    // p3: _In_opt_ DWORD CreateOptions 
+    info->regs->r8 = 0;
+
+    // p4: _In_opt_ DWORD IsolationLevel 
+    info->regs->r9 = 0;
+
+    
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+    return 1;
+
+err:
+    PRINT_DEBUG("Failed to pass inputs to createtransaction hijacked function!\n");
+    return 0;
+}
+
 
 
 /*
@@ -535,7 +698,10 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     // check current thread exists
     uint32_t threadid = 0;
     if ( !drakvuf_get_current_thread_id(doppelganging->drakvuf, info->vcpu, &threadid) || !threadid )
+    {
+        PRINT_DEBUG("Skip. Error retriving current TID\n");
         return 0;
+    }
 
 
     // --- CHAIN #0 ---
@@ -544,7 +710,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     if ( doppelganging->hijacked_status == CALL_NONE && 
          info->regs->rip == doppelganging->bp.breakpoint.addr )
     {
-        // save all regs
+        // save all regs (TrapFrame original status)
         memcpy(&doppelganging->saved_regs, info->regs, sizeof(x86_registers_t));
 
         // === start execution chain ===
@@ -552,7 +718,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for LoadLibrary function call
         if ( !loadlibrary_inputs(doppelganging, info, "ktmw32.dll") )
         {
-            PRINT_DEBUG("Failed to setup stack for LoadLibrary(KtmW32.dll)\n");
+            PRINT_DEBUG("Error: failed to setup stack for LoadLibrary(KtmW32.dll)\n");
             return 0;
         }
         
@@ -564,7 +730,10 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // if target thread was not defined, the current one is defined now
         if ( !doppelganging->target_tid )
+        {
             doppelganging->target_tid = threadid;
+            PRINT_DEBUG("Setting TID=0x%lx\n", threadid);
+        }
 
         // goto next chain: LoadLibrary
         return VMI_EVENT_RESPONSE_SET_REGISTERS;
@@ -576,18 +745,55 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     // - current thread is not the target one
     if ( doppelganging->hijacked_status == CALL_NONE || 
          info->regs->rip != doppelganging->bp.breakpoint.addr || 
-         threadid != doppelganging->target_tid )
+         threadid != doppelganging->target_tid ) 
+    {
+        PRINT_DEBUG("Skip Check #1. Status=%d RIP=0x%lx BP=0x%lx TID=0x%lx TargetTID=0x%lx VCPU=%d\n", 
+            doppelganging->hijacked_status, info->regs->rip, doppelganging->bp.breakpoint.addr,
+            threadid, doppelganging->target_tid, info->vcpu);
         return 0;
+    }
 
 
     // --- CHAIN #1 ---
-    // check current RIP is trapframe breakpoint and check hijacked_status
-    if ( doppelganging->hijacked_status == CALL_LOADLIBRARY && 
-         info->regs->rip == doppelganging->bp.breakpoint.addr )
+    // check status is: "waiting for LoadLibrary return"
+    if ( doppelganging->hijacked_status == CALL_LOADLIBRARY )
     {
         // print LoadLibraryA return code
         PRINT_DEBUG("LoadLibraryA RAX: 0x%lx\n", info->regs->rax);
 
+        // check LoadLibraryA return: fails==NULL
+        if (! info->regs->rax) {
+            PRINT_DEBUG("Error: LoadLibrary(KtmW32.dll) fails\n");
+            return 0;
+        }
+
+        // === start execution chain ===
+
+        // setup stack for CreateTransaction function call
+        if ( !createtransaction_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for CreateTransaction()\n");
+            return 0;
+        }
+        
+        // set next chain RIP: CreateTransaction
+        info->regs->rip = doppelganging->createtransaction;
+
+        // set status to CALL_CREATETRANSACTION
+        doppelganging->hijacked_status = CALL_CREATETRANSACTION;
+
+        // goto next chain: CreateTransaction
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
+
+
+/* Call to be used in case of fails: GetLastError()
+    // --- CHAIN #FAILS ---
+    // check current RIP is trapframe breakpoint and check hijacked_status
+    if ( doppelganging->hijacked_status == CALL_???????? && 
+         info->regs->rip == doppelganging->bp.breakpoint.addr )
+    {
         // === start execution chain ===
 
         // setup stack for GetLastError function call
@@ -603,23 +809,19 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // set status to CALL_GETLASTERROR
         doppelganging->hijacked_status = CALL_GETLASTERROR;
 
-        // if target thread was not defined, the current one is defined now
-        if ( !doppelganging->target_tid )
-            doppelganging->target_tid = threadid;
-
         // goto next chain: GetLastError
         return VMI_EVENT_RESPONSE_SET_REGISTERS;
     }
+*/
 
-
-    // We are now in the return path from GetLastError
+    // We are now in the return path from latest call
 
     // remove trapframe breakpoint trap
     drakvuf_interrupt(drakvuf, -1);
     drakvuf_remove_trap(drakvuf, &doppelganging->bp, NULL);
 
 
-    // print GetLastError return code
+    // print latest call return code
     PRINT_DEBUG("RAX: 0x%lx\n", info->regs->rax);
 
 
@@ -631,7 +833,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
 
 // Doppelganging main
-int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, const char* app)
+int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, const char* lproc, const char* app)
 {
     struct doppelganging doppelganging = { 0 };
     doppelganging.drakvuf = drakvuf;
@@ -639,6 +841,7 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     doppelganging.rekall_profile = drakvuf_get_rekall_profile(drakvuf);
     doppelganging.target_pid = pid;
     doppelganging.target_tid = tid;
+    doppelganging.local_proc = lproc;
     doppelganging.target_proc = app;
 
     doppelganging.is32bit = (vmi_get_page_mode(doppelganging.vmi, 0) == VMI_PM_IA32E) ? 0 : 1;
