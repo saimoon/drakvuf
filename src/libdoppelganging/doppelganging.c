@@ -333,6 +333,60 @@ err:
 }
 
 
+/*
+    Create stack to call GetLastError
+
+    DWORD WINAPI GetLastError(void);
+*/
+bool getlasterror_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+
+    // stack start here
+    addr_t addr = rsp;
+
+
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+    return 1;
+
+err:
+    PRINT_DEBUG("Failed to pass inputs to GetLastError hijacked function!\n");
+    return 0;
+}
+
+
 
 // CR3 register callback trap
 event_response_t dg_cr3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
@@ -517,7 +571,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // === start execution chain ===
 
         // setup stack for GetLastError function call
-        if ( !GetLastError_inputs(doppelganging, info) )
+        if ( !getlasterror_inputs(doppelganging, info) )
         {
             PRINT_DEBUG("Failed to setup stack for GetLastError()\n");
             return 0;
