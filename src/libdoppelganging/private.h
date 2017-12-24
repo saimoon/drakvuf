@@ -121,6 +121,15 @@ extern bool verbose;
 
 enum offset
 {
+    CALL_NONE,
+    CALL_LOADLIBRARY,
+    CALL_GETLASTERROR,
+
+    CALL_MAX
+};
+
+enum offset
+{
     NT_TIB_STACKBASE,
     NT_TIB_STACKLIMIT,
     KTHREAD_TRAPFRAME,

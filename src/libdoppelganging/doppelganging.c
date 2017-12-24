@@ -129,9 +129,10 @@ struct doppelganging
     drakvuf_t drakvuf;
     vmi_instance_t vmi;
     const char* rekall_profile;
-    bool is32bit, hijacked;
+    bool is32bit;
+    int hijacked_status;
     addr_t createprocessa;
-    addr_t ntcreatesection, loadlibrary;
+    addr_t ntcreatesection, loadlibrary, getlasterror;
 //    addr_t createtransaction;
 
     addr_t process_info;
@@ -228,41 +229,48 @@ struct kapc_64
 // was not packed
 
 
-//////////////////////////////
+
+
+/*
+    Create stack to call LoadLibrary
+
+    HMODULE WINAPI LoadLibrary( _In_ LPCTSTR lpFileName );
+*/
 bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info, const char* dllname)
 {
+    addr_t stack_base, stack_limit;
 
+    // get VMI
     vmi_instance_t vmi = doppelganging->vmi;
-    reg_t fsgs, rsp = info->regs->rsp;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
     access_context_t ctx =
     {
         .translate_mechanism = VMI_TM_PROCESS_DTB,
         .dtb = info->regs->cr3,
     };
 
-    addr_t stack_base, stack_limit;
-
-    fsgs = info->regs->gs_base;
-
+    // get Stack Base
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
         goto err;
 
+    // get Stack Limit
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
         goto err;
 
 
     // Push input arguments on the stack
-    //CreateProcess(NULL, TARGETPROC, NULL, NULL, 0, CREATE_SUSPENDED, NULL, NULL, &si, pi))
-    // HMODULE WINAPI LoadLibrary( _In_ LPCTSTR lpFileName );
-
     uint8_t nul8 = 0;
     uint64_t nul64 = 0;
-
-    size_t len = strlen(dllname);
-    addr_t addr = rsp;
     addr_t str_addr;
+
+    // stack start here
+    addr_t addr = rsp;
 
 
     addr -= 0x8; // the stack has to be alligned to 0x8
@@ -273,9 +281,10 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
 
-    // this string has to be aligned as well!
+    // this string has to be aligned as well
+    size_t len = strlen(dllname);
     addr -= len + 0x8 - (len % 0x8);
-    str_addr = addr;
+    str_addr = addr;    // string address
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) dllname, NULL))
         goto err;
@@ -292,13 +301,12 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
 
-/*
     // allocate 0x8 "homing space" for p1 on stack
     addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
-*/
+
     //p1
     info->regs->rcx = str_addr;
     //p2
@@ -323,181 +331,27 @@ err:
     PRINT_DEBUG("Failed to pass inputs to loadlibrary hijacked function!\n");
     return 0;
 }
-//////////////////////////////
 
-bool pass_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
-{
 
-    vmi_instance_t vmi = doppelganging->vmi;
-    reg_t fsgs, rsp = info->regs->rsp;
-    access_context_t ctx =
-    {
-        .translate_mechanism = VMI_TM_PROCESS_DTB,
-        .dtb = info->regs->cr3,
-    };
 
-    addr_t stack_base, stack_limit;
-
-    fsgs = info->regs->gs_base;
-
-    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
-    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
-        goto err;
-
-    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
-    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
-        goto err;
-
-    //Push input arguments on the stack
-    //CreateProcess(NULL, TARGETPROC, NULL, NULL, 0, CREATE_SUSPENDED, NULL, NULL, &si, pi))
-
-    uint64_t nul64 = 0;
-    uint8_t nul8 = 0;
-    size_t len = strlen(doppelganging->target_proc);
-    addr_t addr = rsp;
-
-    addr_t str_addr, sip_addr;
-
-    addr -= 0x8; // the stack has to be alligned to 0x8
-    // and we need a bit of extra buffer before the string for \0
-
-    // we just going to null out that extra space fully
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-        goto err;
-
-    // this string has to be aligned as well!
-    addr -= len + 0x8 - (len % 0x8);
-    str_addr = addr;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) doppelganging->target_proc, NULL))
-        goto err;
-
-    // add null termination
-    ctx.addr = addr+len;
-    if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
-        goto err;
-
-    struct startup_info_64 si;
-    memset(&si, 0, sizeof(struct startup_info_64));
-    struct process_information_64 pi;
-    memset(&pi, 0, sizeof(struct process_information_64));
-
-    len = sizeof(struct process_information_64);
-    addr -= len;
-    doppelganging->process_info = addr;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &pi, NULL))
-        goto err;
-
-    len = sizeof(struct startup_info_64);
-    addr -= len;
-    sip_addr = addr;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &si, NULL))
-        goto err;
-
-    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
-    //
-    //First 4 parameters to functions are always passed in registers
-    //P1=rcx, P2=rdx, P3=r8, P4=r9
-    //5th parameter onwards (if any) passed via the stack
-
-    //p10
-    addr -= 0x8;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->process_info))
-        goto err;
-
-    //p9
-    addr -= 0x8;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &sip_addr))
-        goto err;
-
-    //p8
-    addr -= 0x8;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-        goto err;
-
-    //p7
-    addr -= 0x8;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-        goto err;
-
-    //p6
-    addr -= 0x8;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-        goto err;
-
-    //p5
-    addr -= 0x8;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-        goto err;
-
-    // allocate 0x20 "homing space"
-    addr -= 0x8;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-        goto err;
-
-    addr -= 0x8;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-        goto err;
-
-    addr -= 0x8;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-        goto err;
-
-    addr -= 0x8;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-        goto err;
-
-    //p1
-    info->regs->rcx = 0;
-    //p2
-    info->regs->rdx = str_addr;
-    //p3
-    info->regs->r8 = 0;
-    //p4
-    info->regs->r9 = 0;
-
-    // save the return address
-    addr -= 0x8;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
-        goto err;
-
-    // Grow the stack
-    info->regs->rsp = addr;
-
-    return 1;
-
-err:
-    PRINT_DEBUG("Failed to pass inputs to hijacked function!\n");
-    return 0;
-}
-
+// CR3 register callback trap
 event_response_t dg_cr3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 {
-
+    // get trap data
     struct doppelganging* doppelganging = info->trap->data;
+
     addr_t thread = 0;
-    reg_t cr3 = info->regs->cr3;
     status_t status;
 
+    // get CR3
+    reg_t cr3 = info->regs->cr3;
     PRINT_DEBUG("CR3 changed to 0x%" PRIx64 "\n", info->regs->cr3);
 
+    // if it is not the right process, continue
     if (cr3 != doppelganging->target_cr3)
         return 0;
 
+    // get thread
     thread = drakvuf_get_current_thread(drakvuf, info->vcpu);
     if (!thread)
     {
@@ -505,14 +359,17 @@ event_response_t dg_cr3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         return 0;
     }
 
+    // get thread id
     uint32_t threadid = 0;
     if ( !drakvuf_get_current_thread_id(doppelganging->drakvuf, info->vcpu, &threadid) || !threadid )
         return 0;
 
     PRINT_DEBUG("Thread @ 0x%lx. ThreadID: %u\n", thread, threadid);
 
+    // if thread was specified as arg and it is not the right thread, continue
     if ( doppelganging->target_tid && doppelganging->target_tid != threadid)
         return 0;
+
 
     /*
      * At this point the process is still in kernel mode, so
@@ -545,6 +402,10 @@ event_response_t dg_cr3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         return 0;
     }
 
+    // reset hijacked_status
+    doppelganging->hijacked_status = CALL_NONE;
+
+    // register breakpoint trap on "Trap Frame RIP"
     doppelganging->bp.type = BREAKPOINT;
     doppelganging->bp.name = "entry";
     doppelganging->bp.cb = dg_int3_cb;
@@ -558,7 +419,7 @@ event_response_t dg_cr3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         PRINT_DEBUG("Got return address 0x%lx from trapframe and it's now trapped!\n",
                     doppelganging->bp.breakpoint.addr);
 
-        // Unsubscribe from the CR3 trap
+        // unsubscribe from the CR3 trap
         drakvuf_remove_trap(drakvuf, info->trap, NULL);
     }
     else
@@ -567,12 +428,18 @@ event_response_t dg_cr3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     return 0;
 }
 
+
+// INT3 breakpoint callback
 event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 {
+    // get trap data
     struct doppelganging* doppelganging = info->trap->data;
+    
     reg_t cr3 = info->regs->cr3;
 
-/*
+
+/* 
+    // set Context
     access_context_t ctx =
     {
         .translate_mechanism = VMI_TM_PROCESS_DTB,
@@ -580,9 +447,10 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     };
 */
 
-    PRINT_DEBUG("INT3 Callback @ 0x%lx. CR3 0x%lx.\n",
-                info->regs->rip, cr3);
+    PRINT_DEBUG("INT3 Callback @ 0x%lx. CR3 0x%lx (status: %d)\n",
+                info->regs->rip, cr3, doppelganging->hijacked_status);
 
+    // check breakpoint has been hit by right process
     if ( cr3 != doppelganging->target_cr3 )
     {
         PRINT_DEBUG("INT3 received but CR3 (0x%lx) doesn't match target process (0x%lx)\n",
@@ -593,88 +461,104 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         return 0;
     }
 
+    // check current thread exists
     uint32_t threadid = 0;
     if ( !drakvuf_get_current_thread_id(doppelganging->drakvuf, info->vcpu, &threadid) || !threadid )
         return 0;
 
-    if ( !doppelganging->hijacked && info->regs->rip == doppelganging->bp.breakpoint.addr )
-    {
-        // We just hit the RIP from the trapframe
 
+    // --- CHAIN #0 ---
+
+    // check current RIP is trapframe breakpoint and check hijacked_status
+    if ( doppelganging->hijacked_status == CALL_NONE && 
+         info->regs->rip == doppelganging->bp.breakpoint.addr )
+    {
         // save all regs
         memcpy(&doppelganging->saved_regs, info->regs, sizeof(x86_registers_t));
 
-
         // === start execution chain ===
-/*        
-        if ( !pass_inputs(doppelganging, info) )
-        {
-            PRINT_DEBUG("Failed to setup stack for passing inputs!\n");
-            return 0;
-        }
-*/
+
+        // setup stack for LoadLibrary function call
         if ( !loadlibrary_inputs(doppelganging, info, "ktmw32.dll") )
         {
-            PRINT_DEBUG("Failed to setup stack for LoadLibrary(KtmW32.dll)!\n");
+            PRINT_DEBUG("Failed to setup stack for LoadLibrary(KtmW32.dll)\n");
             return 0;
         }
         
-
+        // set next chain RIP: LoadLibrary
         info->regs->rip = doppelganging->loadlibrary;
 
-        doppelganging->hijacked = 1;
+        // set status to CALL_LOADLIBRARY
+        doppelganging->hijacked_status = CALL_LOADLIBRARY;
 
+        // if target thread was not defined, the current one is defined now
         if ( !doppelganging->target_tid )
             doppelganging->target_tid = threadid;
 
+        // goto next chain: LoadLibrary
         return VMI_EVENT_RESPONSE_SET_REGISTERS;
     }
 
-    if ( !doppelganging->hijacked || info->regs->rip != doppelganging->bp.breakpoint.addr || threadid != doppelganging->target_tid )
+    // skip this callback in case of:
+    // - hijacked_status is CALL_NONE
+    // - current RIP is not trapframe breakpoint
+    // - current thread is not the target one
+    if ( doppelganging->hijacked_status == CALL_NONE || 
+         info->regs->rip != doppelganging->bp.breakpoint.addr || 
+         threadid != doppelganging->target_tid )
         return 0;
 
-    // We are now in the return path from CreateProcessA
 
+    // --- CHAIN #1 ---
+    // check current RIP is trapframe breakpoint and check hijacked_status
+    if ( doppelganging->hijacked_status == CALL_LOADLIBRARY && 
+         info->regs->rip == doppelganging->bp.breakpoint.addr )
+    {
+        // === start execution chain ===
+
+        // setup stack for GetLastError function call
+        if ( !GetLastError_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for GetLastError()\n");
+            return 0;
+        }
+        
+        // set next chain RIP: GetLastError
+        info->regs->rip = doppelganging->getlasterror;
+
+        // set status to CALL_GETLASTERROR
+        doppelganging->hijacked_status = CALL_GETLASTERROR;
+
+        // if target thread was not defined, the current one is defined now
+        if ( !doppelganging->target_tid )
+            doppelganging->target_tid = threadid;
+
+        // goto next chain: GetLastError
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
+
+    // We are now in the return path from GetLastError
+
+    // remove trapframe breakpoint trap
     drakvuf_interrupt(drakvuf, -1);
     drakvuf_remove_trap(drakvuf, &doppelganging->bp, NULL);
 
+
+    // print GetLastError return code
     PRINT_DEBUG("RAX: 0x%lx\n", info->regs->rax);
 
-/*
-    if (info->regs->rax)
-    {
-        ctx.addr = doppelganging->process_info;
 
-        struct process_information_64 pip = { 0 };
-        if ( VMI_SUCCESS == vmi_read(doppelganging->vmi, &ctx, sizeof(struct process_information_64), &pip, NULL) )
-        {
-            doppelganging->pid = pip.dwProcessId;
-            doppelganging->tid = pip.dwThreadId;
-            doppelganging->hProc = pip.hProcess;
-            doppelganging->hThr = pip.hThread;
-        }
-
-        if (doppelganging->pid && doppelganging->tid)
-        {
-            PRINT_DEBUG("Injected PID: %i. TID: %i\n", doppelganging->pid, doppelganging->tid);
-            doppelganging->rc = info->regs->rax;
-        }
-        else
-        {
-            PRINT_DEBUG("Failed to inject\n");
-            doppelganging->rc = 0;
-        }
-    }
-*/
-
-    
+    // restore all regs and continue execution to trap frame return point
     memcpy(info->regs, &doppelganging->saved_regs, sizeof(x86_registers_t));
     return VMI_EVENT_RESPONSE_SET_REGISTERS;
 }
 
+
+
+// Doppelganging main
 int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, const char* app)
 {
-
     struct doppelganging doppelganging = { 0 };
     doppelganging.drakvuf = drakvuf;
     doppelganging.vmi = drakvuf_lock_and_get_vmi(drakvuf);
@@ -692,13 +576,14 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         goto done;        
     }
 
+    // get DTB (CR3) of pid process
     if ( VMI_FAILURE == vmi_pid_to_dtb(doppelganging.vmi, pid, &doppelganging.target_cr3) )
     {
         PRINT_DEBUG("Unable to find target PID's DTB\n");
         goto done;
     }
 
-    // Get the offsets from the Rekall profile
+    // get offsets from the Rekall profile
     unsigned int i;
     for (i = 0; i < OFFSET_MAX; i++)
     {
@@ -709,12 +594,15 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         }
     }
 
-    PRINT_DEBUG("Target PID %u with DTB 0x%lx to start '%s'\n", pid,
-                doppelganging.target_cr3, app);
+    PRINT_DEBUG("Target PID %u with DTB 0x%lx to start '%s'\n", pid, doppelganging.target_cr3, app);
 
+    // get EPROCESS
     addr_t eprocess_base = 0;
     if ( !drakvuf_find_process(doppelganging.drakvuf, pid, NULL, &eprocess_base) )
         goto done;
+
+
+    // get vaddress of functions to be called
 
     // CreateProcessA
     doppelganging.createprocessa = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "kernel32.dll", "CreateProcessA");
@@ -735,16 +623,16 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
 
 /*
     // CreateTransaction
-    doppelganging.createtransaction = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "KtmW32.dll", "CreateTransaction");
+    doppelganging.createtransaction = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "ktmw32.dll", "CreateTransaction");
     if (!doppelganging.createtransaction)
     {
-        PRINT_DEBUG("Failed to get address of KtmW32.dll!CreateTransaction\n");
+        PRINT_DEBUG("Failed to get address of ktmw32.dll!CreateTransaction\n");
         goto done;
     }
-    PRINT_DEBUG("KtmW32.dll!CreateTransaction: 0x%lx\n", doppelganging.createtransaction);
+    PRINT_DEBUG("ktmw32.dll!CreateTransaction: 0x%lx\n", doppelganging.createtransaction);
 */
 
-    // "GetModuleHandleA" worked well. Check possible "LoadLibraryA" error using DWORD WINAPI GetLastError(void)
+    // LoadLibraryA
     doppelganging.loadlibrary = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "kernel32.dll", "LoadLibraryA");
     if (!doppelganging.loadlibrary)
     {
@@ -753,7 +641,17 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     }
     PRINT_DEBUG("kernel32.dll!LoadLibraryA: 0x%lx\n", doppelganging.loadlibrary);
 
+    // GetLastError
+    doppelganging.getlasterror = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "kernel32.dll", "GetLastError");
+    if (!doppelganging.getlasterror)
+    {
+        PRINT_DEBUG("Failed to get address of kernel32.dll!GetLastError\n");
+        goto done;
+    }
+    PRINT_DEBUG("kernel32.dll!GetLastError: 0x%lx\n", doppelganging.getlasterror);
 
+
+    // register CR3 trap
     doppelganging.cr3_event.type = REGISTER;
     doppelganging.cr3_event.reg = CR3;
     doppelganging.cr3_event.cb = dg_cr3_cb;
@@ -761,16 +659,19 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     if ( !drakvuf_add_trap(drakvuf, &doppelganging.cr3_event) )
         goto done;
 
+    // start loop
     PRINT_DEBUG("Starting injection loop\n");
     drakvuf_loop(drakvuf);
-
-    drakvuf_pause(drakvuf);
-    drakvuf_remove_trap(drakvuf, &doppelganging.cr3_event, NULL);
 
 
     // CreateTransaction
     addr_t createtransaction = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "KtmW32.dll", "CreateTransaction");
     PRINT_DEBUG("--> KtmW32.dll!CreateTransaction: 0x%lx\n", createtransaction);
+
+
+    // close, remove traps and release vmi
+    drakvuf_pause(drakvuf);
+    drakvuf_remove_trap(drakvuf, &doppelganging.cr3_event, NULL);
 
 done:
     PRINT_DEBUG("Finished with injection. Ret: %i\n", doppelganging.rc);
