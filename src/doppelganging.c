@@ -135,7 +135,7 @@ int main(int argc, char** argv)
     char* app = argv[5];
 
     uint32_t tid = 0;
-    if ( argc == 6 )
+    if ( argc == 7 )
         tid = atoi(argv[6]);
 
     bool verbose = 0;

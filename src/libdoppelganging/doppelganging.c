@@ -732,7 +732,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         if ( !doppelganging->target_tid )
         {
             doppelganging->target_tid = threadid;
-            PRINT_DEBUG("Setting TID=0x%lx\n", threadid);
+            PRINT_DEBUG("Setting TID=0x%x\n", threadid);
         }
 
         // goto next chain: LoadLibrary
@@ -747,7 +747,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
          info->regs->rip != doppelganging->bp.breakpoint.addr || 
          threadid != doppelganging->target_tid ) 
     {
-        PRINT_DEBUG("Skip Check #1. Status=%d RIP=0x%lx BP=0x%lx TID=0x%lx TargetTID=0x%lx VCPU=%d\n", 
+        PRINT_DEBUG("Skip Check #1. Status=%d RIP=0x%lx BP=0x%lx TID=0x%x TargetTID=0x%x VCPU=%d\n", 
             doppelganging->hijacked_status, info->regs->rip, doppelganging->bp.breakpoint.addr,
             threadid, doppelganging->target_tid, info->vcpu);
         return 0;
