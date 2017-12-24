@@ -119,7 +119,7 @@ extern bool verbose;
     do {} while(0)
 #endif
 
-enum offset
+enum hijacked
 {
     CALL_NONE,
     CALL_LOADLIBRARY,
