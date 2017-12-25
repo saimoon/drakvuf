@@ -1059,6 +1059,9 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     if ( doppelganging->hijacked_status == CALL_CREATEFILETRANSACTED && 
          info->regs->rax == 0xffffffffffffffff )
     {
+        // print CreateTransaction return code
+        PRINT_DEBUG("CreateFileTransacted RAX: 0x%lx\n", info->regs->rax);
+
         // === start execution chain ===
 
         // setup stack for GetLastError function call
