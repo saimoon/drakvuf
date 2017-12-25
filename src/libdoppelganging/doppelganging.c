@@ -572,7 +572,6 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     uint8_t nul8 = 0;
     uint64_t nul64 = 0;
     addr_t str_addr;
-    addr_t handle_addr;
 
     // stack start here
     addr_t addr = rsp;
@@ -602,11 +601,9 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
 
 
     addr -= 0x8;
-    handle_addr = addr;
     ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->hTransaction))
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
-    PRINT_DEBUG("handle_addr: 0x%lx = 0x%lx\n", handle_addr, doppelganging->hTransaction);
 
 
 
@@ -638,9 +635,9 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     // _In_ HANDLE hTransaction 
     addr -= 0x8;
     ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &handle_addr))
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->hTransaction))
         goto err;
-    PRINT_DEBUG("p8: 0x%lx\n", handle_addr);
+    PRINT_DEBUG("p8: 0x%lx\n", doppelganging->hTransaction);
 
     // p7
     // _In_opt_ HANDLE hTemplateFile 
