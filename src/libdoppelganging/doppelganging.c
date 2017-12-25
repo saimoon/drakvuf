@@ -1060,7 +1060,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     // --- CHAIN #FAILS ---
     // check current RIP is trapframe breakpoint and check hijacked_status
     if ( doppelganging->hijacked_status == CALL_CREATEFILETRANSACTED && 
-         info->regs->rip == 0xffffffffffffffff )
+         info->regs->rax == 0xffffffffffffffff )
     {
         // === start execution chain ===
 
