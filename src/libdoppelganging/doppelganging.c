@@ -1056,12 +1056,11 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
 
 
-
-/* Call to be used in case of fails: GetLastError()
+// Call to be used in case of fails: GetLastError()
     // --- CHAIN #FAILS ---
     // check current RIP is trapframe breakpoint and check hijacked_status
-    if ( doppelganging->hijacked_status == CALL_???????? && 
-         info->regs->rip == doppelganging->bp.breakpoint.addr )
+    if ( doppelganging->hijacked_status == CALL_CREATEFILETRANSACTED && 
+         info->regs->rip == 0xffffffffffffffff )
     {
         // === start execution chain ===
 
@@ -1081,7 +1080,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // goto next chain: GetLastError
         return VMI_EVENT_RESPONSE_SET_REGISTERS;
     }
-*/
+//
 
     // We are now in the return path from latest call
 
