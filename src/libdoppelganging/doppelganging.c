@@ -606,12 +606,15 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
 
+    PRINT_DEBUG(">>> CreateFileTransacted stack:\n");
+
     // p10
     // _Reserved_ PVOID pExtendedParameter 
     addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
+    PRINT_DEBUG("p10: 0x%lx\n", nul64);
 
     // p9
     // _In_opt_ PUSHORT pusMiniVersion
@@ -619,6 +622,7 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
+    PRINT_DEBUG("p9: 0x%lx\n", nul64);
 
     // p8
     // _In_ HANDLE hTransaction 
@@ -626,6 +630,7 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->hTransaction))
         goto err;
+    PRINT_DEBUG("p8: 0x%lx\n", doppelganging->hTransaction);
 
     // p7
     // _In_opt_ HANDLE hTemplateFile 
@@ -633,6 +638,7 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
+    PRINT_DEBUG("p7: 0x%lx\n", nul64);
 
     // p6
     // _In_ DWORD dwFlagsAndAttributes
@@ -642,6 +648,7 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &k_FILE_ATTRIBUTE_NORMAL))
         goto err;
+    PRINT_DEBUG("p6: 0x%lx\n", k_FILE_ATTRIBUTE_NORMAL);
 
     // p5
     // _In_ DWORD dwCreationDisposition
@@ -651,6 +658,7 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &k_OPEN_EXISTING))
         goto err;
+    PRINT_DEBUG("p5: 0x%lx\n", k_OPEN_EXISTING);
 
 
 
@@ -678,6 +686,7 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
 
     // p1: _In_ LPCTSTR lpFileName
     info->regs->rcx = str_addr;
+    PRINT_DEBUG("p1: %s\n", str_addr);
 
     // p2: _In_ DWORD dwDesiredAccess
     // #define GENERIC_READ (0x80000000L)
@@ -686,12 +695,15 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     uint64_t k_GENERIC_WRITE = 0x40000000;
     uint64_t k_dwDesiredAccess = k_GENERIC_READ | k_GENERIC_WRITE;
     info->regs->rdx = k_dwDesiredAccess;
+    PRINT_DEBUG("p2: 0x%lx\n", k_dwDesiredAccess);
 
     // p3: _In_ DWORD dwShareMode 
     info->regs->r8 = 0;
+    PRINT_DEBUG("p3: 0x%lx\n", nul64);
 
     // p4: _In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes
     info->regs->r9 = 0;
+    PRINT_DEBUG("p4: 0x%lx\n", nul64);
 
     
     // save the return address
