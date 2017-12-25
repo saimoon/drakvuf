@@ -592,7 +592,7 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) doppelganging->local_proc, NULL))
         goto err;
-    PRINT_DEBUG("Copied string: %s (len 0x%lx) on stack\n", doppelganging->local_proc, len);
+    PRINT_DEBUG("Copied string: %s (len 0x%lx) on stack @ va 0x%lx\n", doppelganging->local_proc, len, addr);
 
     // add null termination
     ctx.addr = addr+len;
@@ -686,7 +686,7 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
 
     // p1: _In_ LPCTSTR lpFileName
     info->regs->rcx = str_addr;
-    PRINT_DEBUG("p1: %s\n", str_addr);
+    PRINT_DEBUG("p1: 0x%lx\n", str_addr);
 
     // p2: _In_ DWORD dwDesiredAccess
     // #define GENERIC_READ (0x80000000L)
