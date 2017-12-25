@@ -133,8 +133,11 @@ struct doppelganging
     bool is32bit;
     int hijacked_status;
     addr_t createprocessa;
-    addr_t ntcreatesection, loadlibrary, getlasterror, createtransaction;
+    addr_t ntcreatesection, loadlibrary, getlasterror, createtransaction, createfiletransacted;
     addr_t eprocess_base;
+
+    addr_t hTransaction;    // HANDLE
+    addr_t hTransactedFile; // HANDLE
 
     addr_t process_info;
     x86_registers_t saved_regs;
@@ -515,6 +518,203 @@ err:
 
 
 /*
+    Create stack to call CreateFileTransacted
+
+    HANDLE WINAPI CreateFileTransacted(
+      _In_       LPCTSTR               lpFileName,
+      _In_       DWORD                 dwDesiredAccess,
+      _In_       DWORD                 dwShareMode,
+      _In_opt_   LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+      _In_       DWORD                 dwCreationDisposition,
+      _In_       DWORD                 dwFlagsAndAttributes,
+      _In_opt_   HANDLE                hTemplateFile,
+      _In_       HANDLE                hTransaction,
+      _In_opt_   PUSHORT               pusMiniVersion,
+      _Reserved_ PVOID                 pExtendedParameter
+    );
+
+    Example:
+
+    HANDLE hTransactedFile = CreateFileTransacted(
+                                "explorer.exe", GENERIC_WRITE | GENERIC_READ, 0, NULL, 
+                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL, hTransaction, 
+                                NULL, NULL);
+*/
+bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+
+    // Push input arguments on the stack
+    uint8_t nul8 = 0;
+    uint64_t nul64 = 0;
+    addr_t str_addr;
+
+    // stack start here
+    addr_t addr = rsp;
+
+
+    addr -= 0x8; // the stack has to be alligned to 0x8
+    // and we need a bit of extra buffer before the string for \0
+
+    // we just going to null out that extra space fully
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    // this string has to be aligned as well
+    size_t len = strlen(doppelganging->local_proc);
+    addr -= len + 0x8 - (len % 0x8);
+    str_addr = addr;    // string address
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) doppelganging->local_proc, NULL))
+        goto err;
+    PRINT_DEBUG("Copied string: %s (len 0x%lx) on stack\n", doppelganging->local_proc, len);
+
+    // add null termination
+    ctx.addr = addr+len;
+    if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
+        goto err;
+
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+
+    // p10
+    // _Reserved_ PVOID pExtendedParameter 
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    // p9
+    // _In_opt_ PUSHORT pusMiniVersion
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    // p8
+    // _In_ HANDLE hTransaction 
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->hTransaction))
+        goto err;
+
+    // p7
+    // _In_opt_ HANDLE hTemplateFile 
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    // p6
+    // _In_ DWORD dwFlagsAndAttributes
+    // #define FILE_ATTRIBUTE_NORMAL 0x00000080
+    uint64_t k_FILE_ATTRIBUTE_NORMAL = 0x00000080;
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &k_FILE_ATTRIBUTE_NORMAL))
+        goto err;
+
+    // p5
+    // _In_ DWORD dwCreationDisposition
+    // #define OPEN_EXISTING 3
+    uint64_t k_OPEN_EXISTING = 3;
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &k_OPEN_EXISTING))
+        goto err;
+
+
+
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // p1: _In_ LPCTSTR lpFileName
+    info->regs->rcx = str_addr;
+
+    // p2: _In_ DWORD dwDesiredAccess
+    // #define GENERIC_READ (0x80000000L)
+    // #define GENERIC_WRITE (0x40000000L)
+    uint64_t k_GENERIC_READ  = 0x80000000;
+    uint64_t k_GENERIC_WRITE = 0x40000000;
+    uint64_t k_dwDesiredAccess = k_GENERIC_READ | k_GENERIC_WRITE;
+    info->regs->rdx = k_dwDesiredAccess;
+
+    // p3: _In_ DWORD dwShareMode 
+    info->regs->r8 = 0;
+
+    // p4: _In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes
+    info->regs->r9 = 0;
+
+    
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+    return 1;
+
+err:
+    PRINT_DEBUG("Failed to pass inputs to createfiletransacted hijacked function!\n");
+    return 0;
+}
+
+
+
+
+
+/*
     Create stack to call GetLastError
 
     DWORD WINAPI GetLastError(void);
@@ -773,7 +973,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         if (!doppelganging->createtransaction)
         {
             PRINT_DEBUG("Failed to get address of ktmw32.dll!CreateTransaction\n");
-            goto done;
+            return 0;
         }
         PRINT_DEBUG("--> ktmw32.dll!CreateTransaction: 0x%lx\n", doppelganging->createtransaction);
 
@@ -795,6 +995,43 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // goto next chain: CreateTransaction
         return VMI_EVENT_RESPONSE_SET_REGISTERS;
     }
+
+
+    // --- CHAIN #2 ---
+    // check status is: "waiting for CreateTransaction return"
+    if ( doppelganging->hijacked_status == CALL_CREATETRANSACTION )
+    {
+        // print CreateTransaction return code
+        PRINT_DEBUG("CreateTransaction RAX: 0x%lx\n", info->regs->rax);
+
+        // check CreateTransaction return: fails==INVALID_HANDLE_VALUE (-1)
+        if (info->regs->rax <= 0) {
+            PRINT_DEBUG("Error: CreateTransaction() fails\n");
+            return 0;
+        }
+
+        // save HANDLE returned by CreateTransaction
+        doppelganging->hTransaction = info->regs->rax;
+
+        // === start execution chain ===
+
+        // setup stack for CreateFileTransacted function call
+        if ( !createfiletransacted_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for CreateFileTransacted()\n");
+            return 0;
+        }
+        
+        // set next chain RIP: CreateFileTransacted
+        info->regs->rip = doppelganging->createfiletransacted;
+
+        // set status to CALL_CREATEFILETRANSACTED
+        doppelganging->hijacked_status = CALL_CREATEFILETRANSACTED;
+
+        // goto next chain: CreateFileTransacted
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
 
 
 
@@ -917,6 +1154,15 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     }
     PRINT_DEBUG("kernel32.dll!LoadLibraryA: 0x%lx\n", doppelganging.loadlibrary);
 
+    // CreateFileTransactedA
+    doppelganging.createfiletransacted = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "CreateFileTransactedA");
+    if (!doppelganging.createfiletransacted)
+    {
+        PRINT_DEBUG("Failed to get address of kernel32.dll!CreateFileTransactedA\n");
+        goto done;
+    }
+    PRINT_DEBUG("kernel32.dll!CreateFileTransactedA: 0x%lx\n", doppelganging.createfiletransacted);
+ 
     // GetLastError
     doppelganging.getlasterror = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "GetLastError");
     if (!doppelganging.getlasterror)
