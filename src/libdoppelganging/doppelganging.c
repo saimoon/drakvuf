@@ -134,6 +134,7 @@ struct doppelganging
     int hijacked_status;
     addr_t createprocessa;
     addr_t ntcreatesection, loadlibrary, getlasterror, createtransaction;
+    addr_t eprocess_base;
 
     addr_t process_info;
     x86_registers_t saved_regs;
@@ -767,6 +768,15 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             return 0;
         }
 
+        // Library ktmw32.dll loaded. Now we can get CreateTransaction address
+        doppelganging->createtransaction = drakvuf_exportsym_to_va(doppelganging->drakvuf, doppelganging->eprocess_base, "ktmw32.dll", "CreateTransaction");
+        if (!doppelganging->createtransaction)
+        {
+            PRINT_DEBUG("Failed to get address of ktmw32.dll!CreateTransaction\n");
+            goto done;
+        }
+        PRINT_DEBUG("--> ktmw32.dll!CreateTransaction: 0x%lx\n", doppelganging->createtransaction);
+
         // === start execution chain ===
 
         // setup stack for CreateTransaction function call
@@ -874,15 +884,15 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     PRINT_DEBUG("Target PID %u with DTB 0x%lx to start '%s'\n", pid, doppelganging.target_cr3, app);
 
     // get EPROCESS
-    addr_t eprocess_base = 0;
-    if ( !drakvuf_find_process(doppelganging.drakvuf, pid, NULL, &eprocess_base) )
+    doppelganging.eprocess_base = 0;
+    if ( !drakvuf_find_process(doppelganging.drakvuf, pid, NULL, &doppelganging.eprocess_base) )
         goto done;
 
 
     // get vaddress of functions to be called
 
     // CreateProcessA
-    doppelganging.createprocessa = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "kernel32.dll", "CreateProcessA");
+    doppelganging.createprocessa = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "CreateProcessA");
     if (!doppelganging.createprocessa)
     {
         PRINT_DEBUG("Failed to get address of kernel32.dll!CreateProcessA\n");
@@ -890,7 +900,7 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     }
 
     // NtCreateSection
-    doppelganging.ntcreatesection = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "ntdll.dll", "NtCreateSection");
+    doppelganging.ntcreatesection = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "ntdll.dll", "NtCreateSection");
     if (!doppelganging.ntcreatesection)
     {
         PRINT_DEBUG("Failed to get address of ntdll.dll!NtCreateSection\n");
@@ -898,19 +908,8 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     }
     PRINT_DEBUG("ntdll.dll!NtCreateSection: 0x%lx\n", doppelganging.ntcreatesection);
 
-/*
-    // CreateTransaction
-    doppelganging.createtransaction = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "ktmw32.dll", "CreateTransaction");
-    if (!doppelganging.createtransaction)
-    {
-        PRINT_DEBUG("Failed to get address of ktmw32.dll!CreateTransaction\n");
-        goto done;
-    }
-    PRINT_DEBUG("ktmw32.dll!CreateTransaction: 0x%lx\n", doppelganging.createtransaction);
-*/
-
     // LoadLibraryA
-    doppelganging.loadlibrary = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "kernel32.dll", "LoadLibraryA");
+    doppelganging.loadlibrary = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "LoadLibraryA");
     if (!doppelganging.loadlibrary)
     {
         PRINT_DEBUG("Failed to get address of kernel32.dll!LoadLibraryA\n");
@@ -919,7 +918,7 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     PRINT_DEBUG("kernel32.dll!LoadLibraryA: 0x%lx\n", doppelganging.loadlibrary);
 
     // GetLastError
-    doppelganging.getlasterror = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "kernel32.dll", "GetLastError");
+    doppelganging.getlasterror = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "GetLastError");
     if (!doppelganging.getlasterror)
     {
         PRINT_DEBUG("Failed to get address of kernel32.dll!GetLastError\n");
@@ -941,14 +940,7 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     drakvuf_loop(drakvuf);
 
 
-    // CreateTransaction
-    doppelganging.createtransaction = drakvuf_exportsym_to_va(doppelganging.drakvuf, eprocess_base, "ktmw32.dll", "CreateTransaction");
-    if (!doppelganging.createtransaction)
-    {
-        PRINT_DEBUG("Failed to get address of ktmw32.dll!CreateTransaction\n");
-        goto done;
-    }
-    PRINT_DEBUG("--> ktmw32.dll!CreateTransaction: 0x%lx\n", doppelganging.createtransaction);
+    // return status OK
     doppelganging.rc = 1;
 
 
