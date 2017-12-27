@@ -622,7 +622,7 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
 
-    PRINT_DEBUG(">>> CreateFileTransacted stack:\n");
+    PRINT_DEBUG("CreateFileTransacted() stack:\n");
 
     // p10
     // _Reserved_ PVOID pExtendedParameter 
@@ -801,6 +801,7 @@ bool virtualalloc_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
     //First 4 parameters to functions are always passed in registers
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
+    PRINT_DEBUG("VirtualAlloc() stack:\n");
 
 
     // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
@@ -939,6 +940,7 @@ bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* 
     //First 4 parameters to functions are always passed in registers
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
+    PRINT_DEBUG("WriteFile() stack:\n");
 
     // p5 
     // _Inout_opt_ LPOVERLAPPED lpOverlapped
@@ -946,6 +948,7 @@ bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* 
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
+    PRINT_DEBUG("p5: 0x%lx\n", nul64);
 
 
     // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
@@ -1466,7 +1469,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
     // --- CHAIN #4 ---
     // check status is: "waiting for VirtualAlloc return"
-    if ( doppelganging->hijacked_status == CALL_CREATEFILETRANSACTED )
+    if ( doppelganging->hijacked_status == CALL_VIRTUALALLOC )
     {
         // print VirtualAlloc return code
         PRINT_DEBUG("VirtualAlloc RAX: 0x%lx\n", info->regs->rax);
