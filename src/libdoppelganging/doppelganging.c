@@ -113,6 +113,10 @@
 #include <signal.h>
 #include <inttypes.h>
 #include <glib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "libdrakvuf/libdrakvuf.h"
 #include "private.h"
@@ -777,7 +781,6 @@ bool virtualalloc_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
 
 
     // Push input arguments on the stack
-    uint8_t nul8 = 0;
     uint64_t nul64 = 0;
 
     // stack start here
@@ -819,8 +822,6 @@ bool virtualalloc_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
 
-
-    BYTE* myBuf = (BYTE*)VirtualAlloc(NULL, numbdrOfBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
     // p1: _In_opt_ LPVOID lpAddress
     info->regs->rcx = 0;
@@ -936,7 +937,7 @@ bool readhostfile(struct doppelganging* doppelganging)
     }
 
     struct stat hfile_info;
-    if ( stat(injector->inject_file, &hfile_info) < 0 )
+    if ( stat(doppelganging->host_file, &hfile_info) < 0 )
     {
         PRINT_DEBUG("Failed retrieving information about host file\n");
         goto err;
