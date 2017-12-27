@@ -121,7 +121,7 @@ int main(int argc, char** argv)
 {
     if (argc < 6)
     {
-        printf("Usage: %s <rekall profile> <domain> <pid> <localprocname> <app> [tid]\n", argv[0]);
+        printf("Usage: %s <rekall profile> <domain> <pid> <localprocname> <hostfile> [tid]\n", argv[0]);
         printf("\t<required> [optional]\n");
         return 1;
     }
@@ -132,7 +132,7 @@ int main(int argc, char** argv)
     const char* domain = argv[2];
     vmi_pid_t pid = atoi(argv[3]);
     char* lproc = argv[4];
-    char* app = argv[5];
+    char* hfile = argv[5];
 
     uint32_t tid = 0;
     if ( argc == 7 )
@@ -159,10 +159,10 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    if (pid > 0 && app && lproc)
+    if (pid > 0 && hfile && lproc)
     {
-        printf("Doppelganging starting %s as proc %s through PID %u TID: %u\n", app, lproc, pid, tid);
-        int injection_result = doppelganging_start_app(drakvuf, pid, tid, lproc, app);
+        printf("Doppelganging starting %s as proc %s through PID %u TID: %u\n", hfile, lproc, pid, tid);
+        int injection_result = doppelganging_start_app(drakvuf, pid, tid, lproc, hfile);
 
         if (!injection_result)
         {
