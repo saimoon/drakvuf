@@ -1008,6 +1008,121 @@ err:
 
 
 
+
+/*
+    Create stack to call RtlZeroMemory
+
+    void RtlZeroMemory(
+      [in] PVOID  Destination,
+      [in] SIZE_T Length
+    );
+
+*/
+bool rtlzeromemory_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+
+    // Push input arguments on the stack
+    uint64_t nul64 = 0;
+
+    // stack start here
+    addr_t addr = rsp;
+
+
+    // the stack has to be alligned to 0x8
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+    PRINT_DEBUG("RtlZeroMemory() stack:\n");
+
+
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // p1: [in] PVOID Destination
+    info->regs->rcx = doppelganging->guestfile_buffer;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
+
+    // p2: [in] SIZE_T Length
+    info->regs->rdx = doppelganging->hostfile_len;
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
+
+    info->regs->r8 = 0;
+
+    info->regs->r9 = 0;
+
+
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+    return 1;
+
+err:
+    PRINT_DEBUG("Failed to pass inputs to RtlZeroMemory hijacked function!\n");
+    return 0;
+}
+
+
+
+
+
 /*
     Create stack to call GetLastError
 
@@ -1482,6 +1597,36 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // save address returned by VirtualAlloc
         doppelganging->guestfile_buffer = info->regs->rax;
+
+
+        // === start execution chain ===
+
+        // setup stack for RtlZeroMemory function call
+        if ( !rtlzeromemory_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for RtlZeroMemory()\n");
+            return 0;
+        }
+
+        // set next chain RIP: RtlZeroMemory
+        info->regs->rip = doppelganging->rtlzeromemory;
+
+        // set status to CALL_RTLZEROMEMORY
+        doppelganging->hijacked_status = CALL_RTLZEROMEMORY;
+
+        // goto next chain: RtlZeroMemory
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
+
+
+    // --- CHAIN #5 ---
+    // check status is: "waiting for RtlZeroMemory return"
+    if ( doppelganging->hijacked_status == CALL_RTLZEROMEMORY )
+    {
+        // print RtlZeroMemory return code
+        PRINT_DEBUG("RtlZeroMemory RAX: 0x%lx\n", info->regs->rax);
+
 
         // === write to guest buffer ===
 
