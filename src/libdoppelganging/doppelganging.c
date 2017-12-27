@@ -137,14 +137,15 @@ struct doppelganging
     bool is32bit;
     int hijacked_status;
     addr_t createprocessa;
-    addr_t ntcreatesection, loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc;
+    addr_t ntcreatesection, loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, writefile;
     addr_t eprocess_base;
 
-    addr_t hTransaction;    // HANDLE
-    addr_t hTransactedFile; // HANDLE
+    addr_t hTransaction;        // HANDLE
+    addr_t hTransactedFile;     // HANDLE
 
     void *hostfile_buffer;
     int64_t hostfile_len;
+    addr_t guestfile_buffer;
 
     addr_t process_info;
     x86_registers_t saved_regs;
@@ -825,9 +826,11 @@ bool virtualalloc_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
 
     // p1: _In_opt_ LPVOID lpAddress
     info->regs->rcx = 0;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
 
     // p2: _In_ SIZE_T dwSize
     info->regs->rdx = doppelganging->hostfile_len;
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
 
     // p3: _In_ DWORD flAllocationType
     // #define MEM_COMMIT 0x1000
@@ -836,7 +839,7 @@ bool virtualalloc_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
     uint64_t k_MEM_RESERVE  = 0x2000;
     uint64_t k_flAllocationType = k_MEM_COMMIT | k_MEM_RESERVE;
     info->regs->r8 = k_flAllocationType;
-    PRINT_DEBUG("p3: 0x%lx\n", k_flAllocationType);
+    PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
 
     // p4: _In_ DWORD flProtect
     // #define PAGE_READWRITE 0x04
@@ -844,7 +847,7 @@ bool virtualalloc_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
     uint64_t k_PAGE_READWRITE  = 0x4;
     //uint64_t k_PAGE_EXECUTE_READWRITE = 0x40;
     info->regs->r9 = k_PAGE_READWRITE;
-    PRINT_DEBUG("p4: 0x%lx\n", k_PAGE_READWRITE);
+    PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
 
 
     // save the return address
@@ -863,6 +866,137 @@ err:
     return 0;
 }
 
+
+
+/*
+    Create stack to call WriteFile
+
+    BOOL WINAPI WriteFile(
+      _In_        HANDLE       hFile,
+      _In_        LPCVOID      lpBuffer,
+      _In_        DWORD        nNumberOfBytesToWrite,
+      _Out_opt_   LPDWORD      lpNumberOfBytesWritten,
+      _Inout_opt_ LPOVERLAPPED lpOverlapped
+    );
+
+    Example:
+
+    WriteFile(hTransactedFile, buffer, dwFileSize, &wrote, NULL)
+*/
+// ************************** <TODO> *************************** //
+bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+
+    // Push input arguments on the stack
+    uint64_t nul64 = 0;
+
+    // stack start here
+    addr_t addr = rsp;
+
+
+    // the stack has to be alligned to 0x8
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+
+
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // p1: _In_opt_ LPVOID lpAddress
+    info->regs->rcx = 0;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
+
+    // p2: _In_ SIZE_T dwSize
+    info->regs->rdx = doppelganging->hostfile_len;
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
+
+    // p3: _In_ DWORD flAllocationType
+    // #define MEM_COMMIT 0x1000
+    // #define MEM_RESERVE 0x2000
+    uint64_t k_MEM_COMMIT   = 0x1000;
+    uint64_t k_MEM_RESERVE  = 0x2000;
+    uint64_t k_flAllocationType = k_MEM_COMMIT | k_MEM_RESERVE;
+    info->regs->r8 = k_flAllocationType;
+    PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
+
+    // p4: _In_ DWORD flProtect
+    // #define PAGE_READWRITE 0x04
+    // #define PAGE_EXECUTE_READWRITE 0x40
+    uint64_t k_PAGE_READWRITE  = 0x4;
+    //uint64_t k_PAGE_EXECUTE_READWRITE = 0x40;
+    info->regs->r9 = k_PAGE_READWRITE;
+    PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
+
+
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+    return 1;
+
+err:
+    PRINT_DEBUG("Failed to pass inputs to createtransaction hijacked function!\n");
+    return 0;
+}
+// ************************** </TODO> *************************** //
 
 
 
@@ -980,6 +1114,37 @@ err:
 
     return 0;
 }
+
+
+
+
+bool writeguestbuffer(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+
+    // write host file buffer to process userspace buffer
+    ctx.addr = doppelganging->guestfile_buffer;
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, doppelganging->hostfile_len, (void*) doppelganging->hostfile_buffer, NULL))
+        goto err;
+    PRINT_DEBUG("Copied host buffer (len 0x%lx) to process userspace memory @ 0x%lx\n", doppelganging->hostfile_len, doppelganging->guestfile_buffer);
+
+    return 1;
+
+err:
+    PRINT_DEBUG("Failed to write host file buffer to process userspace buffer\n");
+    return 0;
+}
+
+
 
 
 
@@ -1294,6 +1459,50 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     }
 
 
+    // --- CHAIN #4 ---
+    // check status is: "waiting for VirtualAlloc return"
+    if ( doppelganging->hijacked_status == CALL_CREATEFILETRANSACTED )
+    {
+        // print VirtualAlloc return code
+        PRINT_DEBUG("VirtualAlloc RAX: 0x%lx\n", info->regs->rax);
+
+        // check VirtualAlloc return: fails==NULL
+        if (! info->regs->rax) {
+            PRINT_DEBUG("Error: VirtualAlloc() fails\n");
+            return 0;
+        }
+
+        // save address returned by VirtualAlloc
+        doppelganging->guestfile_buffer = info->regs->rax;
+
+        // === write to guest buffer ===
+
+        if ( !writeguestbuffer(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to write to guest file buffer\n");
+            return 0;
+        }
+
+
+        // === start execution chain ===
+
+        // setup stack for WriteFile function call
+        if ( !writefile_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for WriteFile()\n");
+            return 0;
+        }
+
+        // set next chain RIP: WriteFile
+        info->regs->rip = doppelganging->writefile;
+
+        // set status to CALL_WRITEFILE
+        doppelganging->hijacked_status = CALL_WRITEFILE;
+
+        // goto next chain: WriteFile
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
 
 
 /* Call to be used in case of fails: GetLastError()
@@ -1444,6 +1653,15 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         goto done;
     }
     PRINT_DEBUG("kernel32.dll!VirtualAlloc: 0x%lx\n", doppelganging.virtualalloc);
+
+    // WriteFile
+    doppelganging.writefile = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "WriteFile");
+    if (!doppelganging.writefile)
+    {
+        PRINT_DEBUG("Failed to get address of kernel32.dll!WriteFile\n");
+        goto done;
+    }
+    PRINT_DEBUG("kernel32.dll!WriteFile: 0x%lx\n", doppelganging.writefile);
 
 
     // register CR3 trap
