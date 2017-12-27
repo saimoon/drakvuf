@@ -146,6 +146,7 @@ struct doppelganging
     void *hostfile_buffer;
     int64_t hostfile_len;
     addr_t guestfile_buffer;
+    addr_t dwBytesWritten;
 
     addr_t process_info;
     x86_registers_t saved_regs;
@@ -883,7 +884,6 @@ err:
 
     WriteFile(hTransactedFile, buffer, dwFileSize, &wrote, NULL)
 */
-// ************************** <TODO> *************************** //
 bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
 {
     addr_t stack_base, stack_limit;
@@ -926,11 +926,26 @@ bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* 
         goto err;
 
 
+    // dwBytesWritten
+    addr -= 0x8;
+    doppelganging->dwBytesWritten = addr;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
     //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
     //
     //First 4 parameters to functions are always passed in registers
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
+
+    // p5 
+    // _Inout_opt_ LPOVERLAPPED lpOverlapped
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
 
 
     // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
@@ -955,29 +970,20 @@ bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* 
         goto err;
 
 
-    // p1: _In_opt_ LPVOID lpAddress
-    info->regs->rcx = 0;
+    // p1: _In_ HANDLE hFile
+    info->regs->rcx = doppelganging->hTransactedFile;
     PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
 
-    // p2: _In_ SIZE_T dwSize
-    info->regs->rdx = doppelganging->hostfile_len;
+    // p2: _In_ LPCVOID lpBuffer
+    info->regs->rdx = doppelganging->guestfile_buffer;
     PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
 
-    // p3: _In_ DWORD flAllocationType
-    // #define MEM_COMMIT 0x1000
-    // #define MEM_RESERVE 0x2000
-    uint64_t k_MEM_COMMIT   = 0x1000;
-    uint64_t k_MEM_RESERVE  = 0x2000;
-    uint64_t k_flAllocationType = k_MEM_COMMIT | k_MEM_RESERVE;
-    info->regs->r8 = k_flAllocationType;
+    // p3: _In_ DWORD nNumberOfBytesToWrite
+    info->regs->r8 = doppelganging->hostfile_len;
     PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
 
-    // p4: _In_ DWORD flProtect
-    // #define PAGE_READWRITE 0x04
-    // #define PAGE_EXECUTE_READWRITE 0x40
-    uint64_t k_PAGE_READWRITE  = 0x4;
-    //uint64_t k_PAGE_EXECUTE_READWRITE = 0x40;
-    info->regs->r9 = k_PAGE_READWRITE;
+    // p4: _Out_opt_ LPDWORD lpNumberOfBytesWritten
+    info->regs->r9 = doppelganging->dwBytesWritten;
     PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
 
 
@@ -993,10 +999,9 @@ bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* 
     return 1;
 
 err:
-    PRINT_DEBUG("Failed to pass inputs to createtransaction hijacked function!\n");
+    PRINT_DEBUG("Failed to pass inputs to WriteFile hijacked function!\n");
     return 0;
 }
-// ************************** </TODO> *************************** //
 
 
 
