@@ -1433,6 +1433,37 @@ err:
 
 
 
+bool writefile_check(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+
+    uint32_t bytesWritten = 0;
+    ctx.addr = doppelganging->dwBytesWritten;
+    if ( VMI_FAILURE == vmi_read(vmi, &ctx, sizeof(uint32_t), &bytesWritten, NULL) )
+        goto err;
+
+    PRINT_DEBUG("WriteFile dwBytesWritten: 0x%x\n", bytesWritten);
+
+    if ( bytesWritten < doppelganging->hostfile_len ) {
+        PRINT_DEBUG("Error: WriteFile() dwBytesWritten is less than buffer len\n");
+        goto err;
+    }
+
+    return 1;
+
+err:
+    PRINT_DEBUG("Error with WriteFile() written bytes\n");
+    return 0;
+}
 
 
 
@@ -1835,10 +1866,10 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         }
 
         // check WriteFile() bytes written is right
-        PRINT_DEBUG("WriteFile dwBytesWritten: 0x%x\n", *((uint32_t *)doppelganging->dwBytesWritten));
-        if ( *((uint32_t *)doppelganging->dwBytesWritten) < doppelganging->hostfile_len ) {
-            PRINT_DEBUG("Error: WriteFile() dwBytesWritten is less than buffer len\n");
-            return 0;            
+        if ( !writefile_check(doppelganging, info) )
+        {
+            PRINT_DEBUG("Error, WriteFile() wrote less bytes than buffer len\n");
+            return 0;
         }
 
 
