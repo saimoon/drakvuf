@@ -137,7 +137,7 @@ struct doppelganging
     bool is32bit;
     int hijacked_status;
     addr_t createprocessa;
-    addr_t ntcreatesection, loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, writefile;
+    addr_t ntcreatesection, loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile;
     addr_t eprocess_base;
 
     addr_t hTransaction;        // HANDLE
@@ -1806,6 +1806,15 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         goto done;
     }
     PRINT_DEBUG("kernel32.dll!VirtualAlloc: 0x%lx\n", doppelganging.virtualalloc);
+
+    // RtlZeroMemory
+    doppelganging.rtlzeromemory = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "RtlZeroMemory");
+    if (!doppelganging.rtlzeromemory)
+    {
+        PRINT_DEBUG("Failed to get address of kernel32.dll!RtlZeroMemory\n");
+        goto done;
+    }
+    PRINT_DEBUG("kernel32.dll!RtlZeroMemory: 0x%lx\n", doppelganging.rtlzeromemory);
 
     // WriteFile
     doppelganging.writefile = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "WriteFile");
