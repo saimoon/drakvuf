@@ -150,7 +150,7 @@ struct doppelganging
     uint64_t hProcess;          // HANDLE
 
     addr_t pbi_ptr;
-    
+
     void *hostfile_buffer;
     int64_t hostfile_len;
     addr_t guestfile_buffer;
@@ -1644,7 +1644,7 @@ bool ntqueryinformationprocess_inputs(struct doppelganging* doppelganging, drakv
     // PULONG ReturnLength on stack
     addr -= 0x8;
     ctx.addr = addr;
-    addr_t ReturnLength;
+    addr_t ReturnLength = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
 
@@ -2369,14 +2369,14 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // get IMAGE_DOS_HEADER
         struct image_dos_header *pdoshdr_buffer = (struct image_dos_header *)doppelganging->hostfile_buffer;
-        PRINT_DEBUG("buffer IMAGE_DOS_HEADER->e_magic: 0x%x\n", pdoshdr_inject->e_magic);
+        PRINT_DEBUG("buffer IMAGE_DOS_HEADER->e_magic: 0x%x\n", pdoshdr_buffer->e_magic);
 
         // get IMAGE_NT_HEADERS64
         struct image_nt_headers64 *pimgnthdr_buffer = (struct image_nt_headers64 *)(doppelganging->hostfile_buffer + pdoshdr_buffer->e_lfanew);
         PRINT_DEBUG("buffer IMAGE_NT_HEADERS64->Signature: 0x%x\n", pimgnthdr_buffer->Signature);
 
         // get AddressOfEntryPoint
-        uint64_t oep = (uint64_t) pimgnthdr_buffer->OptionalHeader.AddressOfEntryPoint
+        uint64_t oep = (uint64_t) pimgnthdr_buffer->OptionalHeader.AddressOfEntryPoint;
         PRINT_DEBUG("buffer IMAGE_NT_HEADERS64->OptionalHeader->AddressOfEntryPoint: 0x%x\n", pimgnthdr_buffer->OptionalHeader.AddressOfEntryPoint);
         PRINT_DEBUG("oep: 0x%lx\n", oep);
 
