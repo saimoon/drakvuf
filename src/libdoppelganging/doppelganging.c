@@ -137,7 +137,7 @@ struct doppelganging
     bool is32bit;
     int hijacked_status;
     addr_t createprocessa;
-    addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection;
+    addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection, ntcreateprocessex, getcurrentprocess;
     addr_t eprocess_base;
 
     addr_t hTransaction;        // HANDLE
@@ -1286,6 +1286,173 @@ err:
 
 
 
+/*
+    Create stack to call NtCreateProcessEx
+
+    NTSYSAPI
+    NTSTATUS
+    NTAPI NtCreateProcessEx(
+                    OUT PHANDLE ProcessHandle,
+                    IN ACCESS_MASK DesiredAccess,
+                    IN POBJECT_ATTRIBUTES ObjectAttributes,
+                    IN HANDLE InheritFromProcessHandle,
+                    IN BOOLEAN InheritHandles,
+                    IN HANDLE SectionHandle OPTIONAL,
+                    IN HANDLE DebugPort OPTIONAL,
+                    IN HANDLE ExceptionPort OPTIONAL,
+                    IN HANDLE Unknown);
+
+    Example:
+
+    NtCreateProcessEx(&hProcess, GENERIC_ALL, NULL, GetCurrentProcess(), PS_INHERIT_HANDLES, hSection, NULL, NULL, FALSE)
+*/
+// ***************** <TODO> ********************* //
+bool ntcreateprocessex_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+
+    // Push input arguments on the stack
+    uint64_t nul64 = 0;
+
+    // stack start here
+    addr_t addr = rsp;
+
+
+    // the stack has to be alligned to 0x8
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // pointer to hSection
+    addr -= 0x8;
+    doppelganging->hSection_ptr = addr;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+    PRINT_DEBUG("NtCreateSection() stack:\n");
+
+
+    // p7
+    // _In_opt_ HANDLE FileHandle
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->hTransactedFile))
+        goto err;
+    PRINT_DEBUG("p7: 0x%lx\n", doppelganging->hTransactedFile);
+
+    // p6 
+    // _In_ ULONG AllocationAttributes
+    // #define SEC_IMAGE 0x1000000
+    uint64_t k_SEC_IMAGE = 0x1000000;
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &k_SEC_IMAGE))
+        goto err;
+    PRINT_DEBUG("p6: 0x%lx\n", k_SEC_IMAGE);
+
+    // p5 
+    // _In_ ULONG SectionPageProtection
+    // #define PAGE_READONLY 0x02
+    uint64_t k_PAGE_READONLY = 0x2;
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &k_PAGE_READONLY))
+        goto err;
+    PRINT_DEBUG("p5: 0x%lx\n", k_PAGE_READONLY);
+
+
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // p1: _Out_ PHANDLE SectionHandle
+    info->regs->rcx = doppelganging->hSection_ptr;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
+
+    // p2: _In_ ACCESS_MASK DesiredAccess
+    // #define SECTION_ALL_ACCESS 0xf001f
+    uint64_t k_SECTION_ALL_ACCESS = 0xf001f;
+    info->regs->rdx = k_SECTION_ALL_ACCESS;
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
+
+    // p3: _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes
+    info->regs->r8 = 0;
+    PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
+
+    // p4: _In_opt_ PLARGE_INTEGER MaximumSize
+    info->regs->r9 = 0;
+    PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
+
+
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+    return 1;
+
+err:
+    PRINT_DEBUG("Failed to pass inputs to WriteFile hijacked function!\n");
+    return 0;
+}
+// **************** </TODO> *******************
+
+
 
 /*
     Create stack to call GetLastError
@@ -1892,6 +2059,74 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         return VMI_EVENT_RESPONSE_SET_REGISTERS;
     }
 
+/*
+    // --- CHAIN #7 ---
+    // check status is: "waiting for NtCreateSection return"
+    if ( doppelganging->hijacked_status == CALL_NTCREATESECTION )
+    {
+        // print NtCreateSection return code
+        PRINT_DEBUG("NtCreateSection RAX: 0x%lx\n", info->regs->rax);
+
+        // check NtCreateSection return: fails!=STATUS_SUCCESS 0x00
+        if (info->regs->rax) {
+            PRINT_DEBUG("Error: NtCreateSection() fails\n");
+            return 0;
+        }
+
+
+        // === start execution chain ===
+
+        // setup stack for NtCreateProcessEx function call
+        if ( !ntcreateprocessex_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for NtCreateProcessEx()\n");
+            return 0;
+        }
+
+        // set next chain RIP: NtCreateProcessEx
+        info->regs->rip = doppelganging->ntcreateprocessex;
+
+        // set status to CALL_NTCREATEPROCESSEX
+        doppelganging->hijacked_status = CALL_NTCREATEPROCESSEX;
+
+        // goto next chain: NtCreateProcessEx
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+*/
+
+    // --- CHAIN #X ---
+    // check status is: "waiting for NtCreateSection return"
+    if ( doppelganging->hijacked_status == CALL_NTCREATESECTION )
+    {
+        // print NtCreateSection return code
+        PRINT_DEBUG("NtCreateSection RAX: 0x%lx\n", info->regs->rax);
+
+        // check NtCreateSection return: fails!=STATUS_SUCCESS 0x00
+        if (info->regs->rax) {
+            PRINT_DEBUG("Error: NtCreateSection() fails\n");
+            return 0;
+        }
+
+
+        // === start execution chain ===
+
+        // setup stack for GetCurrentProcess function call
+        if ( !getlasterror_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for GetCurrentProcess()\n");
+            return 0;
+        }
+
+        // set next chain RIP: NtCreateProcessEx
+        info->regs->rip = doppelganging->getcurrentprocess;
+
+        // set status to CALL_NTCREATEPROCESSEX
+        doppelganging->hijacked_status = CALL_NTCREATEPROCESSEX;
+
+        // goto next chain: NtCreateProcessEx
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
 
 
 
@@ -2061,6 +2296,24 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         goto done;
     }
     PRINT_DEBUG("ntdll.dll!NtCreateSection: 0x%lx\n", doppelganging.ntcreatesection);
+
+    // NtCreateProcessEx
+    doppelganging.ntcreateprocessex = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "ntdll.dll", "NtCreateProcessEx");
+    if (!doppelganging.ntcreateprocessex)
+    {
+        PRINT_DEBUG("Failed to get address of ntdll.dll!NtCreateProcessEx\n");
+        goto done;
+    }
+    PRINT_DEBUG("ntdll.dll!NtCreateProcessEx: 0x%lx\n", doppelganging.ntcreateprocessex);
+
+    // GetCurrentProcess
+    doppelganging.getcurrentprocess = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "GetCurrentProcess");
+    if (!doppelganging.getcurrentprocess)
+    {
+        PRINT_DEBUG("Failed to get address of kernel32.dll!GetCurrentProcess\n");
+        goto done;
+    }
+    PRINT_DEBUG("kernel32.dll!GetCurrentProcess: 0x%lx\n", doppelganging.getcurrentprocess);
 
 
     // register CR3 trap
