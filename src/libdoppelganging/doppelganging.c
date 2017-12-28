@@ -140,8 +140,8 @@ struct doppelganging
     addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection, ntcreateprocessex;
     addr_t eprocess_base;
 
-    addr_t hTransaction;        // HANDLE
-    addr_t hTransactedFile;     // HANDLE
+    uint64_t hTransaction;      // HANDLE
+    uint64_t hTransactedFile;   // HANDLE
 
     addr_t hSection_ptr;        // PHANDLE
     addr_t hProcess_ptr;        // PHANDLE
@@ -272,6 +272,8 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
         .dtb = info->regs->cr3,
     };
 
+    PRINT_DEBUG(">>>> LoadLibrary stack\n");
+
     // get Stack Base
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
@@ -282,37 +284,39 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
         goto err;
 
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
+
 
     // Push input arguments on the stack
     uint8_t nul8 = 0;
     uint64_t nul64 = 0;
-    addr_t str_addr;
 
     // stack start here
     addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
 
 
-    addr -= 0x8; // the stack has to be alligned to 0x8
-    // and we need a bit of extra buffer before the string for \0
-
+    // the stack has to be alligned to 0x8
     // we just going to null out that extra space fully
+    addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
 
-    // this string has to be aligned as well
+    // lpFileName string (it has to be aligned as well)
+    addr_t dllname_addr;
     size_t len = strlen(dllname);
     addr -= len + 0x8 - (len % 0x8);
-    str_addr = addr;    // string address
+    dllname_addr = addr;                // string address
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) dllname, NULL))
         goto err;
-    PRINT_DEBUG("Copied string: %s (len 0x%lx) on stack\n", dllname, len);
-
     // add null termination
-    ctx.addr = addr+len;
+    ctx.addr = addr + len;
     if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
         goto err;
+    PRINT_DEBUG("- Var. lpFileName (string): %s (len 0x%lx) @ 0x%lx\n", dllname, len, dllname_addr);
 
 
     //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
@@ -321,7 +325,7 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
 
-    // WARNING: allocate MIN 0x10 "homing space" on stack or call will crash
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
     addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
@@ -332,7 +336,6 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
 
-/*
     addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
@@ -342,10 +345,12 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
-*/
+
 
     //p1
-    info->regs->rcx = str_addr;
+    info->regs->rcx = dllname_addr;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
+
 /*    
     //p2
     info->regs->rdx = 0;
@@ -361,13 +366,16 @@ bool loadlibrary_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
         goto err;
 
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
     // Grow the stack
     info->regs->rsp = addr;
+
 
     return 1;
 
 err:
-    PRINT_DEBUG("Failed to pass inputs to loadlibrary hijacked function!\n");
+    PRINT_DEBUG("ERROR: Failed to build LoadLibrary stack\n");
     return 0;
 }
 
@@ -407,6 +415,8 @@ bool createtransaction_inputs(struct doppelganging* doppelganging, drakvuf_trap_
         .dtb = info->regs->cr3,
     };
 
+    PRINT_DEBUG(">>>> CreateTransaction stack\n");
+
     // get Stack Base
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
@@ -417,37 +427,38 @@ bool createtransaction_inputs(struct doppelganging* doppelganging, drakvuf_trap_
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
         goto err;
 
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
 
     // Push input arguments on the stack
     uint8_t nul8 = 0;
     uint64_t nul64 = 0;
-    addr_t str_addr;
 
     // stack start here
     addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
 
 
-    addr -= 0x8; // the stack has to be alligned to 0x8
-    // and we need a bit of extra buffer before the string for \0
-
+    // the stack has to be alligned to 0x8
     // we just going to null out that extra space fully
+    addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
 
-    // this string has to be aligned as well
+    // local_proc string has to be aligned as well
+    addr_t descr_addr;
     size_t len = strlen(doppelganging->local_proc);
     addr -= len + 0x8 - (len % 0x8);
-    str_addr = addr;    // string address
+    descr_addr = addr;                  // string address
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) doppelganging->local_proc, NULL))
         goto err;
-    PRINT_DEBUG("Copied string: %s (len 0x%lx) on stack\n", doppelganging->local_proc, len);
-
     // add null termination
     ctx.addr = addr+len;
     if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
         goto err;
+    PRINT_DEBUG("- Var. local_proc (string): %s (len 0x%lx) @ 0x%lx\n", doppelganging->local_proc, len, descr_addr);
 
 
     //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
@@ -460,8 +471,9 @@ bool createtransaction_inputs(struct doppelganging* doppelganging, drakvuf_trap_
     // _In_opt_ LPWSTR Description 
     addr -= 0x8;
     ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &str_addr))
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &descr_addr))
         goto err;
+    PRINT_DEBUG("p7: 0x%lx\n", descr_addr);
 
     // p6
     // _In_opt_ DWORD Timeout,
@@ -469,6 +481,7 @@ bool createtransaction_inputs(struct doppelganging* doppelganging, drakvuf_trap_
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
+    PRINT_DEBUG("p6: 0x%lx\n", nul64);
 
     // p5
     // _In_opt_ DWORD IsolationFlags 
@@ -476,7 +489,7 @@ bool createtransaction_inputs(struct doppelganging* doppelganging, drakvuf_trap_
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
-
+    PRINT_DEBUG("p5: 0x%lx\n", nul64);
 
 
     // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
@@ -503,15 +516,19 @@ bool createtransaction_inputs(struct doppelganging* doppelganging, drakvuf_trap_
 
     // p1: _In_opt_ LPSECURITY_ATTRIBUTES lpTransactionAttributes
     info->regs->rcx = 0;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
 
     // p2: _In_opt_ LPGUID UOW
     info->regs->rdx = 0;
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
 
     // p3: _In_opt_ DWORD CreateOptions 
     info->regs->r8 = 0;
+    PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
 
     // p4: _In_opt_ DWORD IsolationLevel 
     info->regs->r9 = 0;
+    PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
 
     
     // save the return address
@@ -520,15 +537,19 @@ bool createtransaction_inputs(struct doppelganging* doppelganging, drakvuf_trap_
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
         goto err;
 
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
     // Grow the stack
     info->regs->rsp = addr;
+
 
     return 1;
 
 err:
-    PRINT_DEBUG("Failed to pass inputs to createtransaction hijacked function!\n");
+    PRINT_DEBUG("ERROR: Failed to build CreateTransaction stack\n");
     return 0;
 }
+
 
 
 
@@ -572,6 +593,8 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
         .dtb = info->regs->cr3,
     };
 
+    PRINT_DEBUG(">>>> CreateFileTransacted stack\n");
+
     // get Stack Base
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
@@ -582,44 +605,45 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
         goto err;
 
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
 
     // Push input arguments on the stack
     uint8_t nul8 = 0;
     uint64_t nul64 = 0;
-    addr_t str_addr;
 
     // stack start here
     addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
 
 
-    addr -= 0x8; // the stack has to be alligned to 0x8
-    // and we need a bit of extra buffer before the string for \0
-
+    // the stack has to be alligned to 0x8
     // we just going to null out that extra space fully
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
-        goto err;
-
-    // this string has to be aligned as well
-    size_t len = strlen(doppelganging->local_proc);
-    addr -= len + 0x8 - (len % 0x8);
-    str_addr = addr;    // string address
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) doppelganging->local_proc, NULL))
-        goto err;
-    PRINT_DEBUG("Copied string: %s (len 0x%lx) on stack @ va 0x%lx\n", doppelganging->local_proc, len, addr);
-
-    // add null termination
-    ctx.addr = addr+len;
-    if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
-        goto err;
-
-
     addr -= 0x8;
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
 
+    // local_proc string has to be aligned as well
+    addr_t local_proc_addr;
+    size_t len = strlen(doppelganging->local_proc);
+    addr -= len + 0x8 - (len % 0x8);
+    local_proc_addr = addr;                  // string address
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) doppelganging->local_proc, NULL))
+        goto err;
+    // add null termination
+    ctx.addr = addr+len;
+    if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
+        goto err;
+    PRINT_DEBUG("- Var. local_proc (string): %s (len 0x%lx) @ 0x%lx\n", doppelganging->local_proc, len, local_proc_addr);
+
+
+    // bugfix
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
 
 
     //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
@@ -628,7 +652,6 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
 
-    PRINT_DEBUG("CreateFileTransacted() stack:\n");
 
     // p10
     // _Reserved_ PVOID pExtendedParameter 
@@ -707,8 +730,8 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
 
 
     // p1: _In_ LPCTSTR lpFileName
-    info->regs->rcx = str_addr;
-    PRINT_DEBUG("p1: 0x%lx\n", str_addr);
+    info->regs->rcx = local_proc_addr;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
 
     // p2: _In_ DWORD dwDesiredAccess
     // #define GENERIC_READ (0x80000000L)
@@ -717,15 +740,15 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     uint64_t k_GENERIC_WRITE = 0x40000000;
     uint64_t k_dwDesiredAccess = k_GENERIC_READ | k_GENERIC_WRITE;
     info->regs->rdx = k_dwDesiredAccess;
-    PRINT_DEBUG("p2: 0x%lx\n", k_dwDesiredAccess);
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
 
     // p3: _In_ DWORD dwShareMode 
     info->regs->r8 = 0;
-    PRINT_DEBUG("p3: 0x%lx\n", nul64);
+    PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
 
     // p4: _In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes
     info->regs->r9 = 0;
-    PRINT_DEBUG("p4: 0x%lx\n", nul64);
+    PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
 
     
     // save the return address
@@ -734,13 +757,16 @@ bool createfiletransacted_inputs(struct doppelganging* doppelganging, drakvuf_tr
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
         goto err;
 
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
     // Grow the stack
     info->regs->rsp = addr;
+
 
     return 1;
 
 err:
-    PRINT_DEBUG("Failed to pass inputs to createfiletransacted hijacked function!\n");
+    PRINT_DEBUG("ERROR: Failed to build CreateFileTransacted stack\n");
     return 0;
 }
 
@@ -777,6 +803,8 @@ bool virtualalloc_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
         .dtb = info->regs->cr3,
     };
 
+    PRINT_DEBUG(">>>> VirtualAlloc stack\n");
+
     // get Stack Base
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
@@ -787,12 +815,15 @@ bool virtualalloc_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
         goto err;
 
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
 
     // Push input arguments on the stack
     uint64_t nul64 = 0;
 
     // stack start here
     addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
 
 
     // the stack has to be alligned to 0x8
@@ -807,7 +838,6 @@ bool virtualalloc_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
     //First 4 parameters to functions are always passed in registers
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
-    PRINT_DEBUG("VirtualAlloc() stack:\n");
 
 
     // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
@@ -864,15 +894,19 @@ bool virtualalloc_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
         goto err;
 
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
     // Grow the stack
     info->regs->rsp = addr;
+
 
     return 1;
 
 err:
-    PRINT_DEBUG("Failed to pass inputs to createtransaction hijacked function!\n");
+    PRINT_DEBUG("ERROR: Failed to build VirtualAlloc stack\n");
     return 0;
 }
+
 
 
 
@@ -908,6 +942,8 @@ bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* 
         .dtb = info->regs->cr3,
     };
 
+    PRINT_DEBUG(">>>> WriteFile stack\n");
+
     // get Stack Base
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
@@ -918,12 +954,15 @@ bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* 
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
         goto err;
 
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
 
     // Push input arguments on the stack
     uint64_t nul64 = 0;
 
     // stack start here
     addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
 
 
     // the stack has to be alligned to 0x8
@@ -939,6 +978,7 @@ bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* 
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
+    PRINT_DEBUG("- Var. dwBytesWritten @ 0x%lx\n", doppelganging->dwBytesWritten);
 
 
     //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
@@ -946,7 +986,6 @@ bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* 
     //First 4 parameters to functions are always passed in registers
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
-    PRINT_DEBUG("WriteFile() stack:\n");
 
     // p5 
     // _Inout_opt_ LPOVERLAPPED lpOverlapped
@@ -1002,13 +1041,16 @@ bool writefile_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* 
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
         goto err;
 
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
     // Grow the stack
     info->regs->rsp = addr;
+
 
     return 1;
 
 err:
-    PRINT_DEBUG("Failed to pass inputs to WriteFile hijacked function!\n");
+    PRINT_DEBUG("ERROR: Failed to build WriteFile stack\n");
     return 0;
 }
 
@@ -1041,6 +1083,8 @@ bool rtlzeromemory_inputs(struct doppelganging* doppelganging, drakvuf_trap_info
         .dtb = info->regs->cr3,
     };
 
+    PRINT_DEBUG(">>>> RtlZeroMemory stack\n");
+
     // get Stack Base
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
@@ -1051,12 +1095,15 @@ bool rtlzeromemory_inputs(struct doppelganging* doppelganging, drakvuf_trap_info
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
         goto err;
 
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
 
     // Push input arguments on the stack
     uint64_t nul64 = 0;
 
     // stack start here
     addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
 
 
     // the stack has to be alligned to 0x8
@@ -1071,7 +1118,6 @@ bool rtlzeromemory_inputs(struct doppelganging* doppelganging, drakvuf_trap_info
     //First 4 parameters to functions are always passed in registers
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
-    PRINT_DEBUG("RtlZeroMemory() stack:\n");
 
 
     // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
@@ -1115,13 +1161,16 @@ bool rtlzeromemory_inputs(struct doppelganging* doppelganging, drakvuf_trap_info
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
         goto err;
 
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
     // Grow the stack
     info->regs->rsp = addr;
+
 
     return 1;
 
 err:
-    PRINT_DEBUG("Failed to pass inputs to RtlZeroMemory hijacked function!\n");
+    PRINT_DEBUG("ERROR: Failed to build RtlZeroMemory stack\n");
     return 0;
 }
 
@@ -1162,6 +1211,8 @@ bool ntcreatesection_inputs(struct doppelganging* doppelganging, drakvuf_trap_in
         .dtb = info->regs->cr3,
     };
 
+    PRINT_DEBUG(">>>> NtCreateSection stack\n");
+
     // get Stack Base
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
@@ -1172,12 +1223,15 @@ bool ntcreatesection_inputs(struct doppelganging* doppelganging, drakvuf_trap_in
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
         goto err;
 
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
 
     // Push input arguments on the stack
     uint64_t nul64 = 0;
 
     // stack start here
     addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
 
 
     // the stack has to be alligned to 0x8
@@ -1193,6 +1247,7 @@ bool ntcreatesection_inputs(struct doppelganging* doppelganging, drakvuf_trap_in
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
+    PRINT_DEBUG("- Var. hSection_ptr @ 0x%lx\n", doppelganging->hSection_ptr);
 
 
     //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
@@ -1200,7 +1255,6 @@ bool ntcreatesection_inputs(struct doppelganging* doppelganging, drakvuf_trap_in
     //First 4 parameters to functions are always passed in registers
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
-    PRINT_DEBUG("NtCreateSection() stack:\n");
 
 
     // p7
@@ -1279,15 +1333,19 @@ bool ntcreatesection_inputs(struct doppelganging* doppelganging, drakvuf_trap_in
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
         goto err;
 
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
     // Grow the stack
     info->regs->rsp = addr;
+
 
     return 1;
 
 err:
-    PRINT_DEBUG("Failed to pass inputs to NtCreateSection hijacked function!\n");
+    PRINT_DEBUG("ERROR: Failed to build NtCreateSection stack\n");
     return 0;
 }
+
 
 
 
@@ -1333,6 +1391,8 @@ bool ntcreateprocessex_inputs(struct doppelganging* doppelganging, drakvuf_trap_
         .dtb = info->regs->cr3,
     };
 
+    PRINT_DEBUG(">>>> NtCreateProcessEx stack\n");
+
     // get Stack Base
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
@@ -1343,12 +1403,15 @@ bool ntcreateprocessex_inputs(struct doppelganging* doppelganging, drakvuf_trap_
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
         goto err;
 
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
 
     // Push input arguments on the stack
     uint64_t nul64 = 0;
 
     // stack start here
     addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
 
 
     // the stack has to be alligned to 0x8
@@ -1364,6 +1427,7 @@ bool ntcreateprocessex_inputs(struct doppelganging* doppelganging, drakvuf_trap_
     ctx.addr = addr;
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
+    PRINT_DEBUG("- Var. hProcess_ptr @ 0x%lx\n", doppelganging->hProcess_ptr);
 
 
     //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
@@ -1371,7 +1435,6 @@ bool ntcreateprocessex_inputs(struct doppelganging* doppelganging, drakvuf_trap_
     //First 4 parameters to functions are always passed in registers
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
-    PRINT_DEBUG("NtCreateProcessEx() stack:\n");
 
 
     // p9
@@ -1465,13 +1528,16 @@ bool ntcreateprocessex_inputs(struct doppelganging* doppelganging, drakvuf_trap_
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
         goto err;
 
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
     // Grow the stack
     info->regs->rsp = addr;
+
 
     return 1;
 
 err:
-    PRINT_DEBUG("Failed to pass inputs to NtCreateProcessEx hijacked function!\n");
+    PRINT_DEBUG("ERROR: Failed to build NtCreateProcessEx stack\n");
     return 0;
 }
 
@@ -1499,6 +1565,8 @@ bool getlasterror_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
         .dtb = info->regs->cr3,
     };
 
+    PRINT_DEBUG(">>>> GetLastError stack\n");
+
     // get Stack Base
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
@@ -1509,9 +1577,12 @@ bool getlasterror_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
     if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
         goto err;
 
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
 
     // stack start here
     addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
 
 
     // save the return address
@@ -1520,18 +1591,24 @@ bool getlasterror_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_
     if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
         goto err;
 
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
     // Grow the stack
     info->regs->rsp = addr;
+
 
     return 1;
 
 err:
-    PRINT_DEBUG("Failed to pass inputs to GetLastError hijacked function!\n");
+    PRINT_DEBUG("ERROR: Failed to build GetLastError stack\n");
     return 0;
 }
 
 
 
+
+
+// Read HOST file to get buffer to inject
 bool readhostfile(struct doppelganging* doppelganging)
 {
     int hfile_fd = 0;
