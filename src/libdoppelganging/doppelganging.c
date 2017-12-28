@@ -2455,7 +2455,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         };
 
         addr_t image_base_address = 0;
-        if (VMI_FAILURE == vmi_read_addr(injector->vmi, &newctx, &image_base_address)) {
+        if (VMI_FAILURE == vmi_read_addr(doppelganging->vmi, &newctx, &image_base_address)) {
             PRINT_DEBUG("Failed to get ImageBaseAddress from PEB\n");
             return 0;
         }
