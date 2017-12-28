@@ -149,6 +149,8 @@ struct doppelganging
     uint64_t hSection;          // HANDLE
     uint64_t hProcess;          // HANDLE
 
+    addr_t pbi_ptr;
+    
     void *hostfile_buffer;
     int64_t hostfile_len;
     addr_t guestfile_buffer;
@@ -182,7 +184,7 @@ struct process_basic_information {
 
 
 
-
+/*
 struct startup_info_64
 {
     uint32_t cb;
@@ -258,7 +260,7 @@ struct kapc_64
     uint8_t inserted;
 } __attribute__ ((packed));
 // was not packed
-
+*/
 
 
 

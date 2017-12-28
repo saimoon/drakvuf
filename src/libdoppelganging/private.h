@@ -158,6 +158,12 @@ static const char* offset_names[OFFSET_MAX][2] =
 
 
 // ** PE structs ** //
+struct list_entry_64
+{
+    uint64_t flink;
+    uint64_t blink;
+} __attribute__ ((packed));
+
 
 struct image_dos_header {       // IMAGE_DOS_HEADER
     uint16_t   e_magic;                     // Magic number
