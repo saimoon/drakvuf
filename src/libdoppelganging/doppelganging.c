@@ -150,6 +150,7 @@ struct doppelganging
     uint64_t hProcess;          // HANDLE
 
     addr_t pbi_ptr;
+    addr_t proc_entry;
 
     void *hostfile_buffer;
     int64_t hostfile_len;
@@ -2376,9 +2377,9 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         PRINT_DEBUG("buffer IMAGE_NT_HEADERS64->Signature: 0x%x\n", pimgnthdr_buffer->Signature);
 
         // get AddressOfEntryPoint
-        uint64_t oep = (uint64_t) pimgnthdr_buffer->OptionalHeader.AddressOfEntryPoint;
+        doppelganging->proc_entry = (uint64_t) pimgnthdr_buffer->OptionalHeader.AddressOfEntryPoint;
         PRINT_DEBUG("buffer IMAGE_NT_HEADERS64->OptionalHeader->AddressOfEntryPoint: 0x%x\n", pimgnthdr_buffer->OptionalHeader.AddressOfEntryPoint);
-        PRINT_DEBUG("oep: 0x%lx\n", oep);
+
 
 /*
         // I need to retrive ImageBaseAddress of new process
@@ -2443,6 +2444,26 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         }
         PRINT_DEBUG("PebBaseAddress: 0x%lx\n", pbi.PebBaseAddress);
         PRINT_DEBUG("UniqueProcessId: 0x%lx\n", pbi.UniqueProcessId);
+
+
+
+        // new process context
+        access_context_t newctx = {
+            .translate_mechanism = VMI_TM_PROCESS_PID,
+            .addr = pbi.PebBaseAddress + doppelganging->offsets[PEB_IMAGEBASADDRESS],
+            .pid = pbi.UniqueProcessId
+        };
+
+        addr_t image_base_address = 0;
+        if (VMI_FAILURE == vmi_read_addr(injector->vmi, &newctx, &image_base_address)) {
+            PRINT_DEBUG("Failed to get ImageBaseAddress from PEB\n");
+            return 0;
+        }
+        PRINT_DEBUG("ImageBaseAddress: 0x%lx\n", image_base_address);
+
+        doppelganging->proc_entry = doppelganging->proc_entry + image_base_address;
+        PRINT_DEBUG("proc_entry: 0x%lx\n", doppelganging->proc_entry);
+
 
 /*
         // === start execution chain ===

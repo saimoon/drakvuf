@@ -143,6 +143,7 @@ enum offset
     NT_TIB_STACKLIMIT,
     KTHREAD_TRAPFRAME,
     KTRAP_FRAME_RIP,
+    PEB_IMAGEBASADDRESS,
 
     OFFSET_MAX
 };
@@ -153,6 +154,7 @@ static const char* offset_names[OFFSET_MAX][2] =
     [NT_TIB_STACKLIMIT] = { "_NT_TIB", "StackLimit" },
     [KTHREAD_TRAPFRAME] = {"_KTHREAD", "TrapFrame" },
     [KTRAP_FRAME_RIP] = {"_KTRAP_FRAME", "Rip" },
+    [PEB_IMAGEBASADDRESS] = { "_PEB", "ImageBaseAddress" },
 };
 
 
