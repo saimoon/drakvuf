@@ -137,7 +137,7 @@ struct doppelganging
     bool is32bit;
     int hijacked_status;
     addr_t createprocessa;
-    addr_t ntcreatesection, loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection;
+    addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection;
     addr_t eprocess_base;
 
     addr_t hTransaction;        // HANDLE
@@ -1835,7 +1835,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         }
 
         // check WriteFile() bytes written is right
-        PRINT_DEBUG("WriteFile dwBytesWritten: 0x%lx\n", *((uint32_t *)doppelganging->dwBytesWritten));
+        PRINT_DEBUG("WriteFile dwBytesWritten: 0x%x\n", *((uint32_t *)doppelganging->dwBytesWritten));
         if ( *((uint32_t *)doppelganging->dwBytesWritten) < doppelganging->hostfile_len ) {
             PRINT_DEBUG("Error: WriteFile() dwBytesWritten is less than buffer len\n");
             return 0;            
@@ -1967,15 +1967,6 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         PRINT_DEBUG("Failed to get address of kernel32.dll!CreateProcessA\n");
         goto done;
     }
-
-    // NtCreateSection
-    doppelganging.ntcreatesection = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "ntdll.dll", "NtCreateSection");
-    if (!doppelganging.ntcreatesection)
-    {
-        PRINT_DEBUG("Failed to get address of ntdll.dll!NtCreateSection\n");
-        goto done;
-    }
-    PRINT_DEBUG("ntdll.dll!NtCreateSection: 0x%lx\n", doppelganging.ntcreatesection);
 
     // LoadLibraryA
     doppelganging.loadlibrary = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "LoadLibraryA");
