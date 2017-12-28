@@ -137,7 +137,7 @@ struct doppelganging
     bool is32bit;
     int hijacked_status;
     addr_t createprocessa;
-    addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection, ntcreateprocessex;
+    addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection, ntcreateprocessex, ntqueryinformationprocess;
     addr_t eprocess_base;
 
     uint64_t hTransaction;      // HANDLE
@@ -168,7 +168,19 @@ struct doppelganging
     uint32_t hProc, hThr;
 };
 
-#define SW_SHOWDEFAULT 10
+
+
+
+struct process_basic_information {
+    addr_t Reserved1;
+    addr_t PebBaseAddress;              // process PEB struct pointer
+    addr_t Reserved2[2];
+    uint64_t UniqueProcessId;
+    addr_t Reserved3;
+};
+
+
+
 
 
 struct startup_info_64
@@ -1543,6 +1555,182 @@ err:
 
 
 
+
+
+/*
+    Create stack to call NtCreateProcessEx
+
+    NTSTATUS WINAPI NtQueryInformationProcess(
+      _In_      HANDLE           ProcessHandle,
+      _In_      PROCESSINFOCLASS ProcessInformationClass,
+      _Out_     PVOID            ProcessInformation,
+      _In_      ULONG            ProcessInformationLength,
+      _Out_opt_ PULONG           ReturnLength
+    );
+
+    Example:
+
+    status = NtQueryInformationProcess(
+            hProcess,
+            ProcessBasicInformation,
+            &pi,
+            sizeof(PROCESS_BASIC_INFORMATION),
+            &ReturnLength
+        );
+
+*/
+bool ntqueryinformationprocess_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    PRINT_DEBUG(">>>> NtQueryInformationProcess stack\n");
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
+
+    // Push input arguments on the stack
+    uint64_t nul64 = 0;
+
+    // stack start here
+    addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
+
+
+    // the stack has to be alligned to 0x8
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // process_basic_information var on stack
+    struct process_basic_information pbi;
+    memset(&pbi, 0, sizeof(struct process_basic_information));
+
+    size_t len = sizeof(struct process_basic_information);
+    addr -= len;
+    doppelganging->pbi_ptr = addr;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &pbi, NULL))
+        goto err;
+    PRINT_DEBUG("- Var. pbi_ptr @ 0x%lx\n", doppelganging->pbi_ptr);
+
+
+    // PULONG ReturnLength on stack
+    addr -= 0x8;
+    ctx.addr = addr;
+    addr_t ReturnLength;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+
+
+    // p5 
+    // _Out_opt_ PULONG ReturnLength
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &ReturnLength))
+        goto err;
+    PRINT_DEBUG("p5: 0x%lx\n", ReturnLength);
+
+
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+
+    // p1: _In_ HANDLE ProcessHandle
+    info->regs->rcx = doppelganging->hProcess;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
+
+    // p2: _In_ PROCESSINFOCLASS ProcessInformationClass,
+    // #define ProcessBasicInformation 0
+    uint64_t k_ProcessBasicInformation = 0;
+    info->regs->rdx = k_ProcessBasicInformation;
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
+
+    // p3: _Out_ PVOID ProcessInformation
+    info->regs->r8 = doppelganging->pbi_ptr;
+    PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
+
+    // p4: _In_ ULONG ProcessInformationLength,
+    // GetCurrentProcess() pseudo handle
+    info->regs->r9 = sizeof(struct process_basic_information);
+    PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
+
+
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+
+    return 1;
+
+err:
+    PRINT_DEBUG("ERROR: Failed to build NtQueryInformationProcess stack\n");
+    return 0;
+}
+
+
+
+
+
+
 /*
     Create stack to call GetLastError
 
@@ -2150,6 +2338,133 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     }
 
 
+    // --- CHAIN #8 ---
+    // check status is: "waiting for NtCreateProcessEx return"
+    if ( doppelganging->hijacked_status == CALL_NTCREATEPROCESSEX )
+    {
+        // print NtCreateProcessEx return code
+        PRINT_DEBUG("NtCreateProcessEx RAX: 0x%lx\n", info->regs->rax);
+
+        // check NtCreateProcessEx return: fails!=STATUS_SUCCESS 0x00
+        if (info->regs->rax) {
+            PRINT_DEBUG("Error: NtCreateProcessEx() fails\n");
+            return 0;
+        }
+
+
+        // retrive "hProcess" HANDLE written by NtCreateProcessEx
+        doppelganging->hProcess = 0;
+        ctx.addr = doppelganging->hProcess_ptr;
+        if ( VMI_FAILURE == vmi_read_64(doppelganging->vmi, &ctx, &doppelganging->hProcess) ) {
+            PRINT_DEBUG("Error vmi_reading hProcess_ptr\n");
+            return 0;
+        }
+        PRINT_DEBUG("hProcess: 0x%lx\n", doppelganging->hProcess);
+
+
+
+        // === get Address Entry Point ===
+
+        // get IMAGE_DOS_HEADER
+        struct image_dos_header *pdoshdr_buffer = (struct image_dos_header *)doppelganging->hostfile_buffer;
+        PRINT_DEBUG("buffer IMAGE_DOS_HEADER->e_magic: 0x%x\n", pdoshdr_inject->e_magic);
+
+        // get IMAGE_NT_HEADERS64
+        struct image_nt_headers64 *pimgnthdr_buffer = (struct image_nt_headers64 *)(doppelganging->hostfile_buffer + pdoshdr_buffer->e_lfanew);
+        PRINT_DEBUG("buffer IMAGE_NT_HEADERS64->Signature: 0x%x\n", pimgnthdr_buffer->Signature);
+
+        // get AddressOfEntryPoint
+        uint64_t oep = (uint64_t) pimgnthdr_buffer->OptionalHeader.AddressOfEntryPoint
+        PRINT_DEBUG("buffer IMAGE_NT_HEADERS64->OptionalHeader->AddressOfEntryPoint: 0x%x\n", pimgnthdr_buffer->OptionalHeader.AddressOfEntryPoint);
+        PRINT_DEBUG("oep: 0x%lx\n", oep);
+
+/*
+        // I need to retrive ImageBaseAddress of new process
+        PROCESS_BASIC_INFORMATION pi = { 0 };
+        DWORD ReturnLength = 0;
+        status = NtQueryInformationProcess(
+            hProcess,
+            ProcessBasicInformation,
+            &pi,
+            sizeof(PROCESS_BASIC_INFORMATION),
+            &ReturnLength
+        );
+        if (status != STATUS_SUCCESS) {
+            ERROR
+        }
+        // here I get PEB of process (vmi_read it)
+        PPEB remote_peb_addr = pi.PebBaseAddress;
+
+        // inside PEB there is the value I need: ImageBaseAddress
+*/
+
+
+        // === start execution chain ===
+
+        // setup stack for NtQueryInformationProcess function call
+        if ( !ntqueryinformationprocess_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for NtQueryInformationProcess()\n");
+            return 0;
+        }
+
+        // set next chain RIP: NtQueryInformationProcess
+        info->regs->rip = doppelganging->ntqueryinformationprocess;
+
+        // set status to CALL_NTQUERYINFORMATIONPROCESS
+        doppelganging->hijacked_status = CALL_NTQUERYINFORMATIONPROCESS;
+
+        // goto next chain: NtQueryInformationProcess
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
+
+    // --- CHAIN #9 ---
+    // check status is: "waiting for NtQueryInformationProcess return"
+    if ( doppelganging->hijacked_status == CALL_NTQUERYINFORMATIONPROCESS )
+    {
+        // print NtQueryInformationProcess return code
+        PRINT_DEBUG("NtQueryInformationProcess RAX: 0x%lx\n", info->regs->rax);
+
+        // check NtQueryInformationProcess return: fails!=STATUS_SUCCESS 0x00
+        if (info->regs->rax) {
+            PRINT_DEBUG("Error: NtQueryInformationProcess() fails\n");
+            return 0;
+        }
+
+
+        struct process_basic_information pbi = { 0 };
+        ctx.addr = doppelganging->pbi_ptr;
+        if ( VMI_FAILURE == vmi_read(doppelganging->vmi, &ctx, sizeof(struct process_basic_information), &pbi, NULL) ) {
+            PRINT_DEBUG("Error vmi_reading pbi_ptr\n");
+            return 0;
+        }
+        PRINT_DEBUG("PebBaseAddress: 0x%lx\n", pbi.PebBaseAddress);
+        PRINT_DEBUG("UniqueProcessId: 0x%lx\n", pbi.UniqueProcessId);
+
+/*
+        // === start execution chain ===
+
+        // setup stack for NtCreateProcessEx function call
+        if ( !ntcreateprocessex_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for NtCreateProcessEx()\n");
+            return 0;
+        }
+
+        // set next chain RIP: NtCreateProcessEx
+        info->regs->rip = doppelganging->ntcreateprocessex;
+
+        // set status to CALL_NTCREATEPROCESSEX
+        doppelganging->hijacked_status = CALL_NTCREATEPROCESSEX;
+
+        // goto next chain: NtCreateProcessEx
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+*/        
+    }
+
+
+
 
 
 /* Call to be used in case of fails: GetLastError()
@@ -2328,6 +2643,14 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     }
     PRINT_DEBUG("ntdll.dll!NtCreateProcessEx: 0x%lx\n", doppelganging.ntcreateprocessex);
 
+    // NtQueryInformationProcess
+    doppelganging.ntqueryinformationprocess = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "ntdll.dll", "NtQueryInformationProcess");
+    if (!doppelganging.ntqueryinformationprocess)
+    {
+        PRINT_DEBUG("Failed to get address of ntdll.dll!NtQueryInformationProcess\n");
+        goto done;
+    }
+    PRINT_DEBUG("ntdll.dll!NtQueryInformationProcess: 0x%lx\n", doppelganging.ntqueryinformationprocess);
 
     // register CR3 trap
     doppelganging.cr3_event.type = REGISTER;
