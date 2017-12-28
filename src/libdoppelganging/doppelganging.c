@@ -137,11 +137,12 @@ struct doppelganging
     bool is32bit;
     int hijacked_status;
     addr_t createprocessa;
-    addr_t ntcreatesection, loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile;
+    addr_t ntcreatesection, loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection;
     addr_t eprocess_base;
 
     addr_t hTransaction;        // HANDLE
     addr_t hTransactedFile;     // HANDLE
+    addr_t hSection_ptr;        // PHANDLE
 
     void *hostfile_buffer;
     int64_t hostfile_len;
@@ -1122,6 +1123,169 @@ err:
 
 
 
+/*
+    Create stack to call NtCreateSection
+
+    NTSTATUS NtCreateSection(
+      _Out_    PHANDLE            SectionHandle,
+      _In_     ACCESS_MASK        DesiredAccess,
+      _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes,
+      _In_opt_ PLARGE_INTEGER     MaximumSize,
+      _In_     ULONG              SectionPageProtection,
+      _In_     ULONG              AllocationAttributes,
+      _In_opt_ HANDLE             FileHandle
+    );
+
+    Example:
+
+    NtCreateSection(&hSection, SECTION_ALL_ACCESS, NULL, 0, PAGE_READONLY, SEC_IMAGE, hTransactedFile)
+*/
+bool ntcreatesection_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+
+    // Push input arguments on the stack
+    uint64_t nul64 = 0;
+
+    // stack start here
+    addr_t addr = rsp;
+
+
+    // the stack has to be alligned to 0x8
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // pointer to hSection
+    addr -= 0x8;
+    doppelganging->hSection_ptr = addr;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+    PRINT_DEBUG("NtCreateSection() stack:\n");
+
+
+    // p7
+    // _In_opt_ HANDLE FileHandle
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->hTransactedFile))
+        goto err;
+    PRINT_DEBUG("p7: 0x%lx\n", doppelganging->hTransactedFile);
+
+    // p6 
+    // _In_ ULONG AllocationAttributes
+    // #define SEC_IMAGE 0x1000000
+    uint64_t k_SEC_IMAGE = 0x1000000;
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &k_SEC_IMAGE))
+        goto err;
+    PRINT_DEBUG("p6: 0x%lx\n", k_SEC_IMAGE);
+
+    // p5 
+    // _In_ ULONG SectionPageProtection
+    // #define PAGE_READONLY 0x02
+    uint64_t k_PAGE_READONLY = 0x2;
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &k_PAGE_READONLY))
+        goto err;
+    PRINT_DEBUG("p5: 0x%lx\n", k_PAGE_READONLY);
+
+
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // p1: _Out_ PHANDLE SectionHandle
+    info->regs->rcx = doppelganging->hSection_ptr;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
+
+    // p2: _In_ ACCESS_MASK DesiredAccess
+    // #define SECTION_ALL_ACCESS 0xf001f
+    uint64_t k_SECTION_ALL_ACCESS = 0xf001f;
+    info->regs->rdx = k_SECTION_ALL_ACCESS;
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
+
+    // p3: _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes
+    info->regs->r8 = 0;
+    PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
+
+    // p4: _In_opt_ PLARGE_INTEGER MaximumSize
+    info->regs->r9 = 0;
+    PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
+
+
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+    return 1;
+
+err:
+    PRINT_DEBUG("Failed to pass inputs to WriteFile hijacked function!\n");
+    return 0;
+}
+
+
+
 
 /*
     Create stack to call GetLastError
@@ -1657,6 +1821,48 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     }
 
 
+    // --- CHAIN #6 ---
+    // check status is: "waiting for WriteFile return"
+    if ( doppelganging->hijacked_status == CALL_WRITEFILE )
+    {
+        // print WriteFile return code
+        PRINT_DEBUG("WriteFile RAX: 0x%lx\n", info->regs->rax);
+
+        // check WriteFile return: fails==NULL
+        if (! info->regs->rax) {
+            PRINT_DEBUG("Error: WriteFile() fails\n");
+            return 0;
+        }
+
+        // check WriteFile() bytes written is right
+        PRINT_DEBUG("WriteFile dwBytesWritten: 0x%lx\n", *((uint32_t *)doppelganging->dwBytesWritten));
+        if ( *((uint32_t *)doppelganging->dwBytesWritten) < doppelganging->hostfile_len ) {
+            PRINT_DEBUG("Error: WriteFile() dwBytesWritten is less than buffer len\n");
+            return 0;            
+        }
+
+
+        // === start execution chain ===
+
+        // setup stack for NtCreateSection function call
+        if ( !ntcreatesection_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for NtCreateSection()\n");
+            return 0;
+        }
+
+        // set next chain RIP: NtCreateSection
+        info->regs->rip = doppelganging->ntcreatesection;
+
+        // set status to CALL_NTCREATESECTION
+        doppelganging->hijacked_status = CALL_NTCREATESECTION;
+
+        // goto next chain: NtCreateSection
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
+
+
 
 /* Call to be used in case of fails: GetLastError()
     // --- CHAIN #FAILS ---
@@ -1808,13 +2014,13 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
     PRINT_DEBUG("kernel32.dll!VirtualAlloc: 0x%lx\n", doppelganging.virtualalloc);
 
     // RtlZeroMemory
-    doppelganging.rtlzeromemory = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "RtlZeroMemory");
+    doppelganging.rtlzeromemory = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "ntdll.dll", "RtlZeroMemory");
     if (!doppelganging.rtlzeromemory)
     {
-        PRINT_DEBUG("Failed to get address of kernel32.dll!RtlZeroMemory\n");
+        PRINT_DEBUG("Failed to get address of ntdll.dll!RtlZeroMemory\n");
         goto done;
     }
-    PRINT_DEBUG("kernel32.dll!RtlZeroMemory: 0x%lx\n", doppelganging.rtlzeromemory);
+    PRINT_DEBUG("ntdll.dll!RtlZeroMemory: 0x%lx\n", doppelganging.rtlzeromemory);
 
     // WriteFile
     doppelganging.writefile = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "WriteFile");
@@ -1824,6 +2030,15 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         goto done;
     }
     PRINT_DEBUG("kernel32.dll!WriteFile: 0x%lx\n", doppelganging.writefile);
+
+    // NtCreateSection
+    doppelganging.ntcreatesection = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "ntdll.dll", "NtCreateSection");
+    if (!doppelganging.ntcreatesection)
+    {
+        PRINT_DEBUG("Failed to get address of ntdll.dll!NtCreateSection\n");
+        goto done;
+    }
+    PRINT_DEBUG("ntdll.dll!NtCreateSection: 0x%lx\n", doppelganging.ntcreatesection);
 
 
     // register CR3 trap
