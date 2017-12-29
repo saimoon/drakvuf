@@ -262,7 +262,7 @@ struct doppelganging
     bool is32bit;
     int hijacked_status;
     addr_t createprocessa;
-    addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection, ntcreateprocessex, ntqueryinformationprocess, rtlinitunicodestring, rtlcreateprocessparametersex;
+    addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection, ntcreateprocessex, ntqueryinformationprocess, rtlinitunicodestring, rtlcreateprocessparametersex, virtualallocex;
     addr_t eprocess_base;
 
     uint64_t hTransaction;      // HANDLE
@@ -280,6 +280,10 @@ struct doppelganging
 
     addr_t unicodeDestString_ptr;
     addr_t local_proc_image_ptr, local_proc_dll_ptr, local_proc_currdir_ptr;
+
+    addr_t procparams_ptr;
+    addr_t procparams_ptr_ptr;
+    rtl_user_process_parameters_t procparams;
 
     void *hostfile_buffer;
     int64_t hostfile_len;
@@ -2190,6 +2194,153 @@ err:
 
 
 /*
+    Create stack to call VirtualAllocEx
+
+    LPVOID WINAPI VirtualAllocEx(
+      _In_     HANDLE hProcess,
+      _In_opt_ LPVOID lpAddress,
+      _In_     SIZE_T dwSize,
+      _In_     DWORD  flAllocationType,
+      _In_     DWORD  flProtect
+    );
+
+    Example:
+
+    VirtualAllocEx(hProcess, params, params->Length, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+*/
+bool virtualallocex_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    PRINT_DEBUG(">>>> VirtualAlloc stack\n");
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
+
+    // Push input arguments on the stack
+    uint64_t nul64 = 0;
+
+    // stack start here
+    addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
+
+
+    // the stack has to be alligned to 0x8
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+
+    // p5
+    // _In_ DWORD flProtect
+    // #define PAGE_READWRITE 0x04
+    uint64_t k_PAGE_READWRITE  = 0x4;
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &k_PAGE_READWRITE))
+        goto err;
+    PRINT_DEBUG("p5: 0x%lx\n", k_PAGE_READWRITE);
+
+
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // p1: _In_ HANDLE hProcess
+    info->regs->rcx = doppelganging->hProcess;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
+
+    // p2: _In_opt_ LPVOID lpAddress
+    info->regs->rdx = doppelganging->procparams_ptr;
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
+
+    // p3: _In_ SIZE_T dwSize
+    info->regs->r8 = doppelganging->procparams.Length;
+    PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
+
+    // p4: _In_ DWORD flAllocationType
+    // #define MEM_COMMIT 0x1000
+    // #define MEM_RESERVE 0x2000
+    uint64_t k_MEM_COMMIT   = 0x1000;
+    uint64_t k_MEM_RESERVE  = 0x2000;
+    uint64_t k_flAllocationType = k_MEM_COMMIT | k_MEM_RESERVE;
+    info->regs->r9 = k_flAllocationType;
+    PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
+
+
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+
+    return 1;
+
+err:
+    PRINT_DEBUG("ERROR: Failed to build VirtualAllocEx stack\n");
+    return 0;
+}
+
+
+
+
+
+
+/*
     Create stack to call GetLastError
 
     DWORD WINAPI GetLastError(void);
@@ -3084,25 +3235,36 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             return 0;
         }
 
-/*
+
+        // retrive "procparams" written by RtlCreateProcessParametersEx
+        memset(&doppelganging->procparams, 0, sizeof(rtl_user_process_parameters_t));
+        ctx.addr = doppelganging->procparams_ptr;
+        if ( VMI_FAILURE == vmi_read(doppelganging->vmi, &ctx, sizeof(rtl_user_process_parameters_t), &doppelganging->procparams, NULL) ) {
+            PRINT_DEBUG("Error vmi_reading procparams_ptr\n");
+            return 0;
+        }
+        PRINT_DEBUG("Length: 0x%x\n", doppelganging->procparams.Length);
+        PRINT_DEBUG("EnvironmentSize: 0x%x\n", doppelganging->procparams.EnvironmentSize);
+        PRINT_DEBUG("MaximumLength: 0x%x\n", doppelganging->procparams.MaximumLength);
+
+
         // === start execution chain ===
 
-        // setup stack for RtlCreateProcessParametersEx function call
-        if ( !rtlcreateprocessparametersex_inputs(doppelganging, info) )
+        // setup stack for VirtualAllocEx function call
+        if ( !virtualallocex_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for RtlCreateProcessParametersEx()\n");
+            PRINT_DEBUG("Failed to setup stack for VirtualAllocEx()\n");
             return 0;
         }
 
-        // set next chain RIP: RtlCreateProcessParametersEx
-        info->regs->rip = doppelganging->rtlcreateprocessparametersex;
+        // set next chain RIP: VirtualAllocEx
+        info->regs->rip = doppelganging->virtualallocex;
 
-        // set status to CALL_RTLCREATEPROCESSPARAMETERSEX
-        doppelganging->hijacked_status = CALL_RTLCREATEPROCESSPARAMETERSEX;
+        // set status to CALL_VIRTUALALLOCEX
+        doppelganging->hijacked_status = CALL_VIRTUALALLOCEX;
 
-        // goto next chain: RtlCreateProcessParametersEx
+        // goto next chain: VirtualAllocEx
         return VMI_EVENT_RESPONSE_SET_REGISTERS;
-*/        
     }
 
 
@@ -3311,6 +3473,15 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         goto done;
     }
     PRINT_DEBUG("ntdll.dll!RtlCreateProcessParametersEx: 0x%lx\n", doppelganging.rtlcreateprocessparametersex);
+
+    // VirtualAllocEx
+    doppelganging.virtualallocex = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "VirtualAllocEx");
+    if (!doppelganging.virtualallocex)
+    {
+        PRINT_DEBUG("Failed to get address of kernel32.dll!VirtualAllocEx\n");
+        goto done;
+    }
+    PRINT_DEBUG("kernel32.dll!VirtualAllocEx: 0x%lx\n", doppelganging.virtualallocex);
 
 
     // register CR3 trap
