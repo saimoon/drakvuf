@@ -3103,12 +3103,6 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // print RtlInitUnicodeString return code
         PRINT_DEBUG("RtlInitUnicodeString RAX: 0x%lx\n", info->regs->rax);
 
-        // check RtlInitUnicodeString return: fails!=STATUS_SUCCESS 0x00
-        if (info->regs->rax) {
-            PRINT_DEBUG("Error: RtlInitUnicodeString() fails\n");
-            return 0;
-        }
-
 
         // save "unicodeDestString" pointer written by RtlInitUnicodeString
         doppelganging->local_proc_image_ptr = doppelganging->unicodeDestString_ptr;
@@ -3147,12 +3141,6 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // print RtlInitUnicodeString return code
         PRINT_DEBUG("RtlInitUnicodeString RAX: 0x%lx\n", info->regs->rax);
 
-        // check RtlInitUnicodeString return: fails!=STATUS_SUCCESS 0x00
-        if (info->regs->rax) {
-            PRINT_DEBUG("Error: RtlInitUnicodeString() fails\n");
-            return 0;
-        }
-
 
         // save "unicodeDestString" pointer written by RtlInitUnicodeString
         doppelganging->local_proc_currdir_ptr = doppelganging->unicodeDestString_ptr;
@@ -3189,12 +3177,6 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     {
         // print RtlInitUnicodeString return code
         PRINT_DEBUG("RtlInitUnicodeString RAX: 0x%lx\n", info->regs->rax);
-
-        // check RtlInitUnicodeString return: fails!=STATUS_SUCCESS 0x00
-        if (info->regs->rax) {
-            PRINT_DEBUG("Error: RtlInitUnicodeString() fails\n");
-            return 0;
-        }
 
 
         // save "unicodeDestString" pointer written by RtlInitUnicodeString
