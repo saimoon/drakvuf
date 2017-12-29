@@ -121,6 +121,19 @@
 #include "libdrakvuf/libdrakvuf.h"
 #include "private.h"
 
+
+
+
+struct process_basic_information {
+    addr_t Reserved1;
+    addr_t PebBaseAddress;              // process PEB struct pointer
+    addr_t Reserved2[2];
+    uint64_t UniqueProcessId;
+    addr_t Reserved3;
+};
+
+
+
 struct doppelganging
 {
     // Inputs:
@@ -175,16 +188,6 @@ struct doppelganging
     uint32_t hProc, hThr;
 };
 
-
-
-
-struct process_basic_information {
-    addr_t Reserved1;
-    addr_t PebBaseAddress;              // process PEB struct pointer
-    addr_t Reserved2[2];
-    uint64_t UniqueProcessId;
-    addr_t Reserved3;
-};
 
 
 
@@ -2657,7 +2660,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // === start execution chain ===
 
-        char* local_proc_image = getImageFromPath(doppelganging->local_proc);
+        char* local_proc_image = strdup(doppelganging->local_proc);
+        local_proc_image = getImageFromPath(local_proc_image);
         PRINT_DEBUG("Extract Image from local_proc path: %s\n", local_proc_image);
 
         // setup stack for RtlInitUnicodeString function call
