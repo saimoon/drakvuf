@@ -235,8 +235,8 @@ typedef struct _rtl_user_process_parameters
 
     rtl_drive_letter_curdir_t CurrentDirectories[RTL_MAX_DRIVE_LETTERS];
 
-    addr_t EnvironmentSize;
-    addr_t EnvironmentVersion;
+    uint64_t EnvironmentSize;
+    uint64_t EnvironmentVersion;
     addr_t PackageDependencyData;
     uint32_t ProcessGroupId;
     uint32_t LoaderThreads;
@@ -3244,7 +3244,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             return 0;
         }
         PRINT_DEBUG("Length: 0x%x\n", doppelganging->procparams.Length);
-        PRINT_DEBUG("EnvironmentSize: 0x%x\n", doppelganging->procparams.EnvironmentSize);
+        PRINT_DEBUG("EnvironmentSize: 0x%lx\n", doppelganging->procparams.EnvironmentSize);
         PRINT_DEBUG("MaximumLength: 0x%x\n", doppelganging->procparams.MaximumLength);
 
 
