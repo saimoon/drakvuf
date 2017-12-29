@@ -123,6 +123,37 @@
 
 
 
+/* Windows Structures */
+/* Conversion type:
+    BYTE    --> uint8_t
+    WORD    --> uint16_t
+    DWORD   --> uint32_t
+    HANDLE  --> addr_t
+    LPTSTR  --> addr_t
+    LPBYTE  --> addr_t
+    PSTR    --> addr_t
+    PUCHAR  --> addr_t
+    UCHAR   --> uint8_t
+    ULONGLONG --> uint64_t
+    ...
+
+Type                        | S/U | x86    | x64
+----------------------------+-----+--------+-------
+BYTE, BOOLEAN               | U   | 8 bit  | 8 bit
+----------------------------+-----+--------+-------
+SHORT                       | S   | 16 bit | 16 bit
+USHORT, WORD                | U   | 16 bit | 16 bit
+----------------------------+-----+--------+-------
+INT, LONG                   | S   | 32 bit | 32 bit
+UINT, ULONG, DWORD          | U   | 32 bit | 32 bit
+----------------------------+-----+--------+-------
+INT_PTR, LONG_PTR, LPARAM   | S   | 32 bit | 64 bit
+UINT_PTR, ULONG_PTR, WPARAM | U   | 32 bit | 64 bit
+----------------------------+-----+--------+-------
+LONGLONG                    | S   | 64 bit | 64 bit
+ULONGLONG, QWORD            | U   | 64 bit | 64 bit    
+*/
+
 
 struct process_basic_information {
     addr_t Reserved1;
@@ -130,6 +161,51 @@ struct process_basic_information {
     addr_t Reserved2[2];
     uint64_t UniqueProcessId;
     addr_t Reserved3;
+};
+
+
+
+struct rtl_user_process_parameters
+{
+    uint32_t MaximumLength;
+    uint32_t Length;
+
+    uint32_t Flags;
+    uint32_t DebugFlags;
+
+    addr_t ConsoleHandle;
+    uint32_t ConsoleFlags;
+    addr_t StandardInput;
+    addr_t StandardOutput;
+    addr_t StandardError;
+
+    CURDIR CurrentDirectory;
+    UNICODE_STRING DllPath;
+    UNICODE_STRING ImagePathName;
+    UNICODE_STRING CommandLine;
+    addr_t Environment;
+
+    uint32_t StartingX;
+    uint32_t StartingY;
+    uint32_t CountX;
+    uint32_t CountY;
+    uint32_t CountCharsX;
+    uint32_t CountCharsY;
+    uint32_t FillAttribute;
+
+    uint32_t WindowFlags;
+    uint32_t ShowWindowFlags;
+    UNICODE_STRING WindowTitle;
+    UNICODE_STRING DesktopInfo;
+    UNICODE_STRING ShellInfo;
+    UNICODE_STRING RuntimeData;
+    RTL_DRIVE_LETTER_CURDIR CurrentDirectories[RTL_MAX_DRIVE_LETTERS];
+
+    addr_t EnvironmentSize;
+    addr_t EnvironmentVersion;
+    addr_t PackageDependencyData;
+    uint32_t ProcessGroupId;
+    uint32_t LoaderThreads;
 };
 
 
@@ -1921,6 +1997,193 @@ bool rtlinitunicodestring_inputs(struct doppelganging* doppelganging, drakvuf_tr
 
 err:
     PRINT_DEBUG("ERROR: Failed to build RtlInitUnicodeString stack\n");
+    return 0;
+}
+
+
+
+
+
+/*
+    Create stack to call RtlCreateProcessParametersEx
+
+    NTSTATUS
+    RtlCreateProcessParametersEx(
+        _Out_ PRTL_USER_PROCESS_PARAMETERS *pProcessParameters,
+        _In_ PUNICODE_STRING ImagePathName,
+        _In_opt_ PUNICODE_STRING DllPath,
+        _In_opt_ PUNICODE_STRING CurrentDirectory,
+        _In_opt_ PUNICODE_STRING CommandLine,
+        _In_opt_ PVOID Environment,
+        _In_opt_ PUNICODE_STRING WindowTitle,
+        _In_opt_ PUNICODE_STRING DesktopInfo,
+        _In_opt_ PUNICODE_STRING ShellInfo,
+        _In_opt_ PUNICODE_STRING RuntimeData,
+        _In_ ULONG Flags // pass RTL_USER_PROC_PARAMS_NORMALIZED to keep parameters normalized
+        );
+
+
+    Example:
+
+    PRTL_USER_PROCESS_PARAMETERS params  = nullptr;
+    NTSTATUS status = RtlCreateProcessParametersEx(
+        &params,
+        (PUNICODE_STRING) &uTargetPath,
+        (PUNICODE_STRING) &uDllDir,
+        (PUNICODE_STRING) &uCurrentDir,
+        (PUNICODE_STRING) &uTargetPath,
+        nullptr,
+        (PUNICODE_STRING) &uWindowName,
+        nullptr,
+        nullptr,
+        nullptr,
+        RTL_USER_PROC_PARAMS_NORMALIZED
+    );
+*/
+bool rtlcreateprocessparametersex_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    PRINT_DEBUG(">>>> NtQueryInformationProcess stack\n");
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
+
+    // Push input arguments on the stack
+    uint64_t nul64 = 0;
+
+    // stack start here
+    addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
+
+
+    // the stack has to be alligned to 0x8
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // process_basic_information var on stack
+    struct process_basic_information pbi;
+    memset(&pbi, 0, sizeof(struct process_basic_information));
+
+    size_t len = sizeof(struct process_basic_information);
+    addr -= len;
+    doppelganging->pbi_ptr = addr;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &pbi, NULL))
+        goto err;
+    PRINT_DEBUG("- Var. pbi_ptr @ 0x%lx\n", doppelganging->pbi_ptr);
+
+
+    // PULONG ReturnLength on stack
+    addr -= 0x8;
+    ctx.addr = addr;
+    addr_t ReturnLength = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+
+
+    // p5 
+    // _Out_opt_ PULONG ReturnLength
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &ReturnLength))
+        goto err;
+    PRINT_DEBUG("p5: 0x%lx\n", ReturnLength);
+
+
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+
+    // p1: _In_ HANDLE ProcessHandle
+    info->regs->rcx = doppelganging->hProcess;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
+
+    // p2: _In_ PROCESSINFOCLASS ProcessInformationClass,
+    // #define ProcessBasicInformation 0
+    uint64_t k_ProcessBasicInformation = 0;
+    info->regs->rdx = k_ProcessBasicInformation;
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
+
+    // p3: _Out_ PVOID ProcessInformation
+    info->regs->r8 = doppelganging->pbi_ptr;
+    PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
+
+    // p4: _In_ ULONG ProcessInformationLength,
+    // GetCurrentProcess() pseudo handle
+    info->regs->r9 = sizeof(struct process_basic_information);
+    PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
+
+
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+
+    return 1;
+
+err:
+    PRINT_DEBUG("ERROR: Failed to build NtQueryInformationProcess stack\n");
     return 0;
 }
 
