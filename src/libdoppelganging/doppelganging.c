@@ -164,25 +164,57 @@ struct process_basic_information {
 };
 
 
+// from libvmi/private.h
+/** Windows' UNICODE_STRING structure (x64) */
+typedef struct _windows_unicode_string64 {
+    uint16_t length;
+    uint16_t maximum_length;
+    uint32_t padding;   // align pBuffer
+    uint64_t pBuffer;   // pointer to string contents
+} __attribute__ ((packed))
+    win64_unicode_string_t;
 
-struct rtl_user_process_parameters
+
+// from ntdefs.h
+typedef struct _curdir
+{
+    win64_unicode_string_t DosPath;
+    addr_t Handle;
+} __attribute__ ((packed))
+    curdir_t;
+
+
+#define RTL_MAX_DRIVE_LETTERS 32
+
+typedef struct _rtl_drive_letter_curdir
+{
+    uint16_t Flags;
+    uint16_t Length;
+    uint32_t TimeStamp;
+    win64_unicode_string_t DosPath;
+} __attribute__ ((packed))
+    rtl_drive_letter_curdir_t;
+
+
+
+typedef struct _rtl_user_process_parameters
 {
     uint32_t MaximumLength;
     uint32_t Length;
-
     uint32_t Flags;
     uint32_t DebugFlags;
-
     addr_t ConsoleHandle;
     uint32_t ConsoleFlags;
+    uint32_t padding1;
+
     addr_t StandardInput;
     addr_t StandardOutput;
     addr_t StandardError;
 
-    CURDIR CurrentDirectory;
-    UNICODE_STRING DllPath;
-    UNICODE_STRING ImagePathName;
-    UNICODE_STRING CommandLine;
+    curdir_t CurrentDirectory;
+    win64_unicode_string_t DllPath;
+    win64_unicode_string_t ImagePathName;
+    win64_unicode_string_t CommandLine;
     addr_t Environment;
 
     uint32_t StartingX;
@@ -192,21 +224,25 @@ struct rtl_user_process_parameters
     uint32_t CountCharsX;
     uint32_t CountCharsY;
     uint32_t FillAttribute;
-
     uint32_t WindowFlags;
     uint32_t ShowWindowFlags;
-    UNICODE_STRING WindowTitle;
-    UNICODE_STRING DesktopInfo;
-    UNICODE_STRING ShellInfo;
-    UNICODE_STRING RuntimeData;
-    RTL_DRIVE_LETTER_CURDIR CurrentDirectories[RTL_MAX_DRIVE_LETTERS];
+    uint32_t padding2;
+
+    win64_unicode_string_t WindowTitle;
+    win64_unicode_string_t DesktopInfo;
+    win64_unicode_string_t ShellInfo;
+    win64_unicode_string_t RuntimeData;
+
+    rtl_drive_letter_curdir_t CurrentDirectories[RTL_MAX_DRIVE_LETTERS];
 
     addr_t EnvironmentSize;
     addr_t EnvironmentVersion;
     addr_t PackageDependencyData;
     uint32_t ProcessGroupId;
     uint32_t LoaderThreads;
-};
+} __attribute__ ((packed))
+    rtl_user_process_parameters_t;
+
 
 
 
@@ -264,87 +300,6 @@ struct doppelganging
     uint32_t hProc, hThr;
 };
 
-
-
-
-
-/*
-struct startup_info_64
-{
-    uint32_t cb;
-    addr_t lpReserved;
-    addr_t lpDesktop;
-    addr_t lpTitle;
-    uint32_t dwX;
-    uint32_t dwY;
-    uint32_t dwXSize;
-    uint32_t dwYSize;
-    uint32_t dwXCountChars;
-    uint32_t dwYCountChars;
-    uint32_t dwFillAttribute;
-    uint32_t dwFlags;
-    uint16_t wShowWindow;
-    uint16_t cbReserved2;
-    addr_t lpReserved2;
-    addr_t hStdInput;
-    addr_t hStdOutput;
-    addr_t hStdError;
-} __attribute__ ((packed));
-// was not packed
-
-struct process_information_64
-{
-    addr_t hProcess;
-    addr_t hThread;
-    uint32_t dwProcessId;
-    uint32_t dwThreadId;
-} __attribute__ ((packed));
-
-struct list_entry_32
-{
-    uint32_t flink;
-    uint32_t blink;
-} __attribute__ ((packed));
-
-struct list_entry_64
-{
-    uint64_t flink;
-    uint64_t blink;
-} __attribute__ ((packed));
-
-struct kapc_state_64
-{
-    // apc_list_head[0] = kernel apc list
-    // apc_list_head[1] = user apc list
-    struct list_entry_64 apc_list_head[2];
-    uint64_t process;
-    uint8_t kernel_apc_in_progress;
-    uint8_t kernel_apc_pending;
-    uint8_t user_apc_pending;
-} __attribute__ ((packed));
-// was not packed
-
-struct kapc_64
-{
-    uint8_t type;
-    uint8_t spare_byte0;
-    uint8_t size;
-    uint8_t spare_byte1;
-    uint32_t spare_long0;
-    uint64_t thread;
-    struct list_entry_64 apc_list_entry;
-    uint64_t kernel_routine;
-    uint64_t rundown_routine;
-    uint64_t normal_routine;
-    uint64_t normal_context;
-    uint64_t system_argument_1;
-    uint64_t system_argument_2;
-    uint8_t apc_state_index;
-    uint8_t apc_mode;
-    uint8_t inserted;
-} __attribute__ ((packed));
-// was not packed
-*/
 
 
 
@@ -2057,7 +2012,7 @@ bool rtlcreateprocessparametersex_inputs(struct doppelganging* doppelganging, dr
         .dtb = info->regs->cr3,
     };
 
-    PRINT_DEBUG(">>>> NtQueryInformationProcess stack\n");
+    PRINT_DEBUG(">>>> RtlCreateProcessParametersEx stack\n");
 
     // get Stack Base
     ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
@@ -2087,26 +2042,25 @@ bool rtlcreateprocessparametersex_inputs(struct doppelganging* doppelganging, dr
         goto err;
 
 
-    // process_basic_information var on stack
-    struct process_basic_information pbi;
-    memset(&pbi, 0, sizeof(struct process_basic_information));
+    // rtl_user_process_parameters var on stack
+    rtl_user_process_parameters_t params;
+    memset(&params, 0, sizeof(rtl_user_process_parameters_t));
 
-    size_t len = sizeof(struct process_basic_information);
+    size_t len = sizeof(rtl_user_process_parameters_t);
     addr -= len;
-    doppelganging->pbi_ptr = addr;
+    doppelganging->procparams_ptr = addr;
     ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &pbi, NULL))
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &params, NULL))
         goto err;
-    PRINT_DEBUG("- Var. pbi_ptr @ 0x%lx\n", doppelganging->pbi_ptr);
+    PRINT_DEBUG("- Var. procparams_ptr @ 0x%lx\n", doppelganging->procparams_ptr);
 
 
-    // PULONG ReturnLength on stack
+    // pointer to procparams_ptr on stack
     addr -= 0x8;
+    doppelganging->procparams_ptr_ptr = addr;
     ctx.addr = addr;
-    addr_t ReturnLength = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->procparams_ptr))
         goto err;
-
 
 
     //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
@@ -2115,14 +2069,63 @@ bool rtlcreateprocessparametersex_inputs(struct doppelganging* doppelganging, dr
     //P1=rcx, P2=rdx, P3=r8, P4=r9
     //5th parameter onwards (if any) passed via the stack
 
-
-    // p5 
-    // _Out_opt_ PULONG ReturnLength
+    // p11
+    // _In_ ULONG Flags
+    // #define RTL_USER_PROC_PARAMS_NORMALIZED 0x00000001
+    uint64_t k_RTL_USER_PROC_PARAMS_NORMALIZED = 0x00000001;
     addr -= 0x8;
     ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &ReturnLength))
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &k_RTL_USER_PROC_PARAMS_NORMALIZED))
         goto err;
-    PRINT_DEBUG("p5: 0x%lx\n", ReturnLength);
+    PRINT_DEBUG("p11: 0x%lx\n", k_RTL_USER_PROC_PARAMS_NORMALIZED);
+
+    // p10
+    // _In_opt_ PUNICODE_STRING RuntimeData
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+    PRINT_DEBUG("p10: 0x%lx\n", nul64);
+
+    // p9
+    // _In_opt_ PUNICODE_STRING ShellInfo
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+    PRINT_DEBUG("p9: 0x%lx\n", nul64);
+
+    // p8
+    // _In_opt_ PUNICODE_STRING DesktopInfo
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+    PRINT_DEBUG("p8: 0x%lx\n", nul64);
+
+    // p7
+    // _In_opt_ PUNICODE_STRING WindowTitle
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+    PRINT_DEBUG("p7: 0x%lx\n", nul64);
+
+    // p6
+    // _In_opt_ PVOID Environment
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+    PRINT_DEBUG("p6: 0x%lx\n", nul64);
+
+    // p5
+    // _In_opt_ PUNICODE_STRING CommandLine
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->local_proc_image_ptr))
+        goto err;
+    PRINT_DEBUG("p5: 0x%lx\n", doppelganging->local_proc_image_ptr);
 
 
     // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
@@ -2147,24 +2150,20 @@ bool rtlcreateprocessparametersex_inputs(struct doppelganging* doppelganging, dr
         goto err;
 
 
-
-    // p1: _In_ HANDLE ProcessHandle
-    info->regs->rcx = doppelganging->hProcess;
+    // p1: _Out_ PRTL_USER_PROCESS_PARAMETERS *pProcessParameters
+    info->regs->rcx = doppelganging->procparams_ptr_ptr;
     PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
 
-    // p2: _In_ PROCESSINFOCLASS ProcessInformationClass,
-    // #define ProcessBasicInformation 0
-    uint64_t k_ProcessBasicInformation = 0;
-    info->regs->rdx = k_ProcessBasicInformation;
+    // p2: _In_ PUNICODE_STRING ImagePathName
+    info->regs->rdx = doppelganging->local_proc_image_ptr;
     PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
 
-    // p3: _Out_ PVOID ProcessInformation
-    info->regs->r8 = doppelganging->pbi_ptr;
+    // p3: _In_opt_ PUNICODE_STRING DllPath
+    info->regs->r8 = doppelganging->local_proc_dll_ptr;
     PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
 
-    // p4: _In_ ULONG ProcessInformationLength,
-    // GetCurrentProcess() pseudo handle
-    info->regs->r9 = sizeof(struct process_basic_information);
+    // p4: _In_opt_ PUNICODE_STRING CurrentDirectory
+    info->regs->r9 = doppelganging->local_proc_currdir_ptr;
     PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
 
 
@@ -2183,7 +2182,7 @@ bool rtlcreateprocessparametersex_inputs(struct doppelganging* doppelganging, dr
     return 1;
 
 err:
-    PRINT_DEBUG("ERROR: Failed to build NtQueryInformationProcess stack\n");
+    PRINT_DEBUG("ERROR: Failed to build RtlCreateProcessParametersEx stack\n");
     return 0;
 }
 
@@ -3069,6 +3068,41 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // goto next chain: RtlCreateProcessParametersEx
         return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
+
+    // --- CHAIN #13 ---
+    // check status is: "waiting for RtlCreateProcessParametersEx return"
+    if ( doppelganging->hijacked_status == CALL_RTLCREATEPROCESSPARAMETERSEX )
+    {
+        // print RtlCreateProcessParametersEx return code
+        PRINT_DEBUG("RtlCreateProcessParametersEx RAX: 0x%lx\n", info->regs->rax);
+
+        // check RtlCreateProcessParametersEx return: fails!=STATUS_SUCCESS 0x00
+        if (info->regs->rax) {
+            PRINT_DEBUG("Error: RtlCreateProcessParametersEx() fails\n");
+            return 0;
+        }
+
+/*
+        // === start execution chain ===
+
+        // setup stack for RtlCreateProcessParametersEx function call
+        if ( !rtlcreateprocessparametersex_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for RtlCreateProcessParametersEx()\n");
+            return 0;
+        }
+
+        // set next chain RIP: RtlCreateProcessParametersEx
+        info->regs->rip = doppelganging->rtlcreateprocessparametersex;
+
+        // set status to CALL_RTLCREATEPROCESSPARAMETERSEX
+        doppelganging->hijacked_status = CALL_RTLCREATEPROCESSPARAMETERSEX;
+
+        // goto next chain: RtlCreateProcessParametersEx
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+*/        
     }
 
 
