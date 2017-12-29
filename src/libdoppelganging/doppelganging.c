@@ -137,7 +137,7 @@ struct doppelganging
     bool is32bit;
     int hijacked_status;
     addr_t createprocessa;
-    addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection, ntcreateprocessex, ntqueryinformationprocess;
+    addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection, ntcreateprocessex, ntqueryinformationprocess, rtlinitunicodestring, rtlcreateprocessparametersex;
     addr_t eprocess_base;
 
     uint64_t hTransaction;      // HANDLE
@@ -151,6 +151,10 @@ struct doppelganging
 
     addr_t pbi_ptr;
     addr_t proc_entry;
+    struct process_basic_information pbi;
+
+    addr_t unicodeDestString_ptr;
+    addr_t local_proc_image_ptr, local_proc_dll_ptr, local_proc_currdir_ptr;
 
     void *hostfile_buffer;
     int64_t hostfile_len;
@@ -262,6 +266,42 @@ struct kapc_64
 } __attribute__ ((packed));
 // was not packed
 */
+
+
+
+
+
+
+// **** UTILS **** //
+char* getImageFromPath(char* path)
+{
+    for (int i = strlen(path) - 1; i >= 0; i--)  
+    {
+        if (path[i] == '\\')
+        {
+            return &path[i+1];
+        }
+    }
+    return path;
+}
+
+void stripPathToDir(char* path)
+{
+    for (int i = strlen(path) - 1; i>=0; i--)  
+    {
+        if (path[i] == '\\')
+        {
+            path[i+1] = '\0';
+            return;
+        }
+    }
+    path[0] = '.';
+    path[1] = '\\';
+    path[2] = '\0';
+}
+
+
+
 
 
 
@@ -1732,6 +1772,156 @@ err:
 
 
 
+/*
+    Create stack to call RtlInitUnicodeString
+
+    VOID WINAPI RtlInitUnicodeString(
+      _Inout_  PUNICODE_STRING DestinationString,
+      _In_opt_ PCWSTR          SourceString
+    );
+
+    Example:
+
+    UNICODE_STRING uTargetPath = { 0 };
+    RtlInitUnicodeString(&uTargetPath , targetPath);
+*/
+bool rtlinitunicodestring_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info, const char* sourceString)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    PRINT_DEBUG(">>>> RtlInitUnicodeString stack\n");
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
+
+
+    // Push input arguments on the stack
+    uint8_t nul8 = 0;
+    uint64_t nul64 = 0;
+
+    // stack start here
+    addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
+
+
+    // the stack has to be alligned to 0x8
+    // we just going to null out that extra space fully
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // pointer to unicodeDestString
+    addr -= 0x8;
+    doppelganging->unicodeDestString_ptr = addr;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+    PRINT_DEBUG("- Var. unicodeDestString_ptr @ 0x%lx\n", doppelganging->unicodeDestString_ptr);
+
+
+    // sourceString string (it has to be aligned as well)
+    addr_t sourceString_addr;
+    size_t len = strlen(sourceString);
+    addr -= len + 0x8 - (len % 0x8);
+    sourceString_addr = addr;                // string address
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, (void*) sourceString, NULL))
+        goto err;
+    // add null termination
+    ctx.addr = addr + len;
+    if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
+        goto err;
+    PRINT_DEBUG("- Var. sourceString (string): %s (len 0x%lx) @ 0x%lx\n", sourceString, len, sourceString_addr);
+
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    //p1: _Inout_ PUNICODE_STRING DestinationString
+    info->regs->rcx = doppelganging->unicodeDestString_ptr;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
+
+    //p2: _In_opt_ PCWSTR SourceString
+    info->regs->rdx = sourceString_addr;
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
+
+/*    
+    //p3
+    info->regs->r8 = 0;
+    //p4
+    info->regs->r9 = 0;
+*/
+    
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+
+    return 1;
+
+err:
+    PRINT_DEBUG("ERROR: Failed to build RtlInitUnicodeString stack\n");
+    return 0;
+}
+
+
 
 
 /*
@@ -2436,22 +2626,22 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         }
 
 
-        struct process_basic_information pbi = { 0 };
+        memset(&doppelganging->pbi, 0, sizeof(struct process_basic_information));
         ctx.addr = doppelganging->pbi_ptr;
-        if ( VMI_FAILURE == vmi_read(doppelganging->vmi, &ctx, sizeof(struct process_basic_information), &pbi, NULL) ) {
+        if ( VMI_FAILURE == vmi_read(doppelganging->vmi, &ctx, sizeof(struct process_basic_information), &doppelganging->pbi, NULL) ) {
             PRINT_DEBUG("Error vmi_reading pbi_ptr\n");
             return 0;
         }
-        PRINT_DEBUG("PebBaseAddress: 0x%lx\n", pbi.PebBaseAddress);
-        PRINT_DEBUG("UniqueProcessId: 0x%lx\n", pbi.UniqueProcessId);
+        PRINT_DEBUG("PebBaseAddress: 0x%lx\n", doppelganging->pbi.PebBaseAddress);
+        PRINT_DEBUG("UniqueProcessId: 0x%lx\n", doppelganging->pbi.UniqueProcessId);
 
 
 
         // new process context
         access_context_t newctx = {
             .translate_mechanism = VMI_TM_PROCESS_PID,
-            .addr = pbi.PebBaseAddress + doppelganging->offsets[PEB_IMAGEBASADDRESS],
-            .pid = pbi.UniqueProcessId
+            .addr = doppelganging->pbi.PebBaseAddress + doppelganging->offsets[PEB_IMAGEBASADDRESS],
+            .pid = doppelganging->pbi.UniqueProcessId
         };
 
         addr_t image_base_address = 0;
@@ -2465,25 +2655,153 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         PRINT_DEBUG("proc_entry: 0x%lx\n", doppelganging->proc_entry);
 
 
-/*
         // === start execution chain ===
 
-        // setup stack for NtCreateProcessEx function call
-        if ( !ntcreateprocessex_inputs(doppelganging, info) )
+        char* local_proc_image = getImageFromPath(doppelganging->local_proc);
+        PRINT_DEBUG("Extract Image from local_proc path: %s\n", local_proc_image);
+
+        // setup stack for RtlInitUnicodeString function call
+        if ( !rtlinitunicodestring_inputs(doppelganging, info, local_proc_image) )
         {
-            PRINT_DEBUG("Failed to setup stack for NtCreateProcessEx()\n");
+            PRINT_DEBUG("Failed to setup stack for RtlInitUnicodeString()\n");
             return 0;
         }
 
-        // set next chain RIP: NtCreateProcessEx
-        info->regs->rip = doppelganging->ntcreateprocessex;
+        // set next chain RIP: RtlInitUnicodeString
+        info->regs->rip = doppelganging->rtlinitunicodestring;
 
-        // set status to CALL_NTCREATEPROCESSEX
-        doppelganging->hijacked_status = CALL_NTCREATEPROCESSEX;
+        // set status to CALL_RTLINITUNICODESTRING_IMAGE
+        doppelganging->hijacked_status = CALL_RTLINITUNICODESTRING_IMAGE;
 
-        // goto next chain: NtCreateProcessEx
+        // goto next chain: RtlInitUnicodeString
         return VMI_EVENT_RESPONSE_SET_REGISTERS;
-*/        
+    }
+
+
+
+    // --- CHAIN #10 ---
+    // check status is: "waiting for RtlInitUnicodeString return"
+    if ( doppelganging->hijacked_status == CALL_RTLINITUNICODESTRING_IMAGE )
+    {
+        // print RtlInitUnicodeString return code
+        PRINT_DEBUG("RtlInitUnicodeString RAX: 0x%lx\n", info->regs->rax);
+
+        // check RtlInitUnicodeString return: fails!=STATUS_SUCCESS 0x00
+        if (info->regs->rax) {
+            PRINT_DEBUG("Error: RtlInitUnicodeString() fails\n");
+            return 0;
+        }
+
+
+        // save "unicodeDestString" pointer written by RtlInitUnicodeString
+        doppelganging->local_proc_image_ptr = doppelganging->unicodeDestString_ptr;
+        PRINT_DEBUG("local_proc_image_ptr: 0x%lx\n", doppelganging->local_proc_image_ptr);
+
+
+        // === start execution chain ===
+
+        char* local_proc_currdir = strdup(doppelganging->local_proc);
+        stripPathToDir(local_proc_currdir);
+        PRINT_DEBUG("Extract directory from local_proc path: %s\n", local_proc_currdir);
+
+        // setup stack for RtlInitUnicodeString function call
+        if ( !rtlinitunicodestring_inputs(doppelganging, info, local_proc_currdir) )
+        {
+            PRINT_DEBUG("Failed to setup stack for RtlInitUnicodeString()\n");
+            return 0;
+        }
+
+        // set next chain RIP: RtlInitUnicodeString
+        info->regs->rip = doppelganging->rtlinitunicodestring;
+
+        // set status to CALL_RTLINITUNICODESTRING_CURRDIR
+        doppelganging->hijacked_status = CALL_RTLINITUNICODESTRING_CURRDIR;
+
+        // goto next chain: RtlInitUnicodeString
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
+
+
+    // --- CHAIN #11 ---
+    // check status is: "waiting for RtlInitUnicodeString return"
+    if ( doppelganging->hijacked_status == CALL_RTLINITUNICODESTRING_CURRDIR )
+    {
+        // print RtlInitUnicodeString return code
+        PRINT_DEBUG("RtlInitUnicodeString RAX: 0x%lx\n", info->regs->rax);
+
+        // check RtlInitUnicodeString return: fails!=STATUS_SUCCESS 0x00
+        if (info->regs->rax) {
+            PRINT_DEBUG("Error: RtlInitUnicodeString() fails\n");
+            return 0;
+        }
+
+
+        // save "unicodeDestString" pointer written by RtlInitUnicodeString
+        doppelganging->local_proc_currdir_ptr = doppelganging->unicodeDestString_ptr;
+        PRINT_DEBUG("local_proc_currdir_ptr: 0x%lx\n", doppelganging->local_proc_currdir_ptr);
+
+
+        // === start execution chain ===
+
+        char local_proc_dll[] = "C:\\Windows\\System32";
+        PRINT_DEBUG("local_proc_dll path: %s\n", local_proc_dll);
+
+        // setup stack for RtlInitUnicodeString function call
+        if ( !rtlinitunicodestring_inputs(doppelganging, info, local_proc_dll) )
+        {
+            PRINT_DEBUG("Failed to setup stack for RtlInitUnicodeString()\n");
+            return 0;
+        }
+
+        // set next chain RIP: RtlInitUnicodeString
+        info->regs->rip = doppelganging->rtlinitunicodestring;
+
+        // set status to CALL_RTLINITUNICODESTRING_DLL
+        doppelganging->hijacked_status = CALL_RTLINITUNICODESTRING_DLL;
+
+        // goto next chain: RtlInitUnicodeString
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
+
+
+    // --- CHAIN #12 ---
+    // check status is: "waiting for RtlInitUnicodeString return"
+    if ( doppelganging->hijacked_status == CALL_RTLINITUNICODESTRING_DLL )
+    {
+        // print RtlInitUnicodeString return code
+        PRINT_DEBUG("RtlInitUnicodeString RAX: 0x%lx\n", info->regs->rax);
+
+        // check RtlInitUnicodeString return: fails!=STATUS_SUCCESS 0x00
+        if (info->regs->rax) {
+            PRINT_DEBUG("Error: RtlInitUnicodeString() fails\n");
+            return 0;
+        }
+
+
+        // save "unicodeDestString" pointer written by RtlInitUnicodeString
+        doppelganging->local_proc_dll_ptr = doppelganging->unicodeDestString_ptr;
+        PRINT_DEBUG("local_proc_dll_ptr: 0x%lx\n", doppelganging->local_proc_dll_ptr);
+
+
+        // === start execution chain ===
+
+        // setup stack for RtlCreateProcessParametersEx function call
+        if ( !rtlcreateprocessparametersex_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for RtlCreateProcessParametersEx()\n");
+            return 0;
+        }
+
+        // set next chain RIP: RtlCreateProcessParametersEx
+        info->regs->rip = doppelganging->rtlcreateprocessparametersex;
+
+        // set status to CALL_RTLCREATEPROCESSPARAMETERSEX
+        doppelganging->hijacked_status = CALL_RTLCREATEPROCESSPARAMETERSEX;
+
+        // goto next chain: RtlCreateProcessParametersEx
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
     }
 
 
@@ -2674,6 +2992,25 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         goto done;
     }
     PRINT_DEBUG("ntdll.dll!NtQueryInformationProcess: 0x%lx\n", doppelganging.ntqueryinformationprocess);
+
+    // RtlInitUnicodeString
+    doppelganging.rtlinitunicodestring = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "ntdll.dll", "RtlInitUnicodeString");
+    if (!doppelganging.rtlinitunicodestring)
+    {
+        PRINT_DEBUG("Failed to get address of ntdll.dll!RtlInitUnicodeString\n");
+        goto done;
+    }
+    PRINT_DEBUG("ntdll.dll!RtlInitUnicodeString: 0x%lx\n", doppelganging.rtlinitunicodestring);
+
+    // RtlCreateProcessParametersEx
+    doppelganging.rtlcreateprocessparametersex = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "ntdll.dll", "RtlCreateProcessParametersEx");
+    if (!doppelganging.rtlcreateprocessparametersex)
+    {
+        PRINT_DEBUG("Failed to get address of ntdll.dll!RtlCreateProcessParametersEx\n");
+        goto done;
+    }
+    PRINT_DEBUG("ntdll.dll!RtlCreateProcessParametersEx: 0x%lx\n", doppelganging.rtlcreateprocessparametersex);
+
 
     // register CR3 trap
     doppelganging.cr3_event.type = REGISTER;
