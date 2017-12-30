@@ -2046,25 +2046,13 @@ bool rtlcreateprocessparametersex_inputs(struct doppelganging* doppelganging, dr
         goto err;
 
 
-    // rtl_user_process_parameters var on stack
-    rtl_user_process_parameters_t params;
-    memset(&params, 0, sizeof(rtl_user_process_parameters_t));
-
-    size_t len = sizeof(rtl_user_process_parameters_t);
-    addr -= len;
-    doppelganging->procparams_ptr = addr;
-    ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write(vmi, &ctx, len, &params, NULL))
-        goto err;
-    PRINT_DEBUG("- Var. procparams_ptr @ 0x%lx\n", doppelganging->procparams_ptr);
-
-
-    // pointer to procparams_ptr on stack
+    // pointer to pointer to rtl_user_process_parameters_t on stack
     addr -= 0x8;
     doppelganging->procparams_ptr_ptr = addr;
     ctx.addr = addr;
-    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &doppelganging->procparams_ptr))
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
         goto err;
+    PRINT_DEBUG("- Var. procparams_ptr_ptr @ 0x%lx\n", doppelganging->procparams_ptr_ptr);
 
 
     //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
@@ -3218,6 +3206,15 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         }
 
 
+        // retrive "procparams_ptr" written by RtlCreateProcessParametersEx
+        doppelganging->procparams_ptr = NULL;
+        ctx.addr = doppelganging->procparams_ptr_ptr;
+        if ( VMI_FAILURE == vmi_read_64(doppelganging->vmi, &ctx, &doppelganging->procparams_ptr) ) {
+            PRINT_DEBUG("Error vmi_reading procparams_ptr_ptr\n");
+            return 0;
+        }
+        PRINT_DEBUG("procparams_ptr = 0x%lx\n", doppelganging->procparams_ptr);
+
         // retrive "procparams" written by RtlCreateProcessParametersEx
         memset(&doppelganging->procparams, 0, sizeof(rtl_user_process_parameters_t));
         ctx.addr = doppelganging->procparams_ptr;
@@ -3229,17 +3226,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         PRINT_DEBUG("EnvironmentSize: 0x%lx\n", doppelganging->procparams.EnvironmentSize);
         PRINT_DEBUG("MaximumLength: 0x%x\n", doppelganging->procparams.MaximumLength);
 
-        addr_t pptmp;
-        ctx.addr = doppelganging->procparams_ptr_ptr;
-        if ( VMI_FAILURE == vmi_read_64(doppelganging->vmi, &ctx, &pptmp) ) {
-            PRINT_DEBUG("Error vmi_reading procparams_ptr_ptr\n");
-            return 0;
-        }
-        PRINT_DEBUG("procparams_ptr_ptr = 0x%lx\n", pptmp);
-        PRINT_DEBUG("procparams_ptr = 0x%lx\n", doppelganging->procparams_ptr);
-
         PRINT_DEBUG("procparams: sizeof = 0x%lx\n", sizeof(doppelganging->procparams));
-        PRINT_DEBUG("rtl_user_process_parameters_t: sizeof = 0x%lx\n", sizeof(rtl_user_process_parameters_t));
         unsigned char* pointer = (unsigned char*)&doppelganging->procparams;
         while (pointer < (unsigned char*)&doppelganging->procparams + sizeof(doppelganging->procparams)) {
             PRINT_DEBUG("%x ", *pointer);
