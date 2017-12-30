@@ -3229,11 +3229,21 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         PRINT_DEBUG("EnvironmentSize: 0x%lx\n", doppelganging->procparams.EnvironmentSize);
         PRINT_DEBUG("MaximumLength: 0x%x\n", doppelganging->procparams.MaximumLength);
 
+        addr_t pptmp;
+        ctx.addr = doppelganging->procparams_ptr_ptr;
+        if ( VMI_FAILURE == vmi_read_64(doppelganging->vmi, &ctx, &pptmp) ) {
+            PRINT_DEBUG("Error vmi_reading procparams_ptr_ptr\n");
+            return 0;
+        }
+        PRINT_DEBUG("procparams_ptr_ptr = 0x%lx\n", pptmp);
+        PRINT_DEBUG("procparams_ptr = 0x%lx\n", doppelganging->procparams_ptr);
+
         PRINT_DEBUG("procparams: sizeof = 0x%lx\n", sizeof(doppelganging->procparams));
+        PRINT_DEBUG("rtl_user_process_parameters_t: sizeof = 0x%lx\n", sizeof(rtl_user_process_parameters_t));
         unsigned char* pointer = (unsigned char*)&doppelganging->procparams;
         while (pointer < (unsigned char*)&doppelganging->procparams + sizeof(doppelganging->procparams)) {
             PRINT_DEBUG("%x ", *pointer);
-            if ( (pointer % 0x10) == 0 )
+            if ( ((uint64_t)pointer % 0x10) == 0 )
                 PRINT_DEBUG("\n");
             pointer++;
         }
