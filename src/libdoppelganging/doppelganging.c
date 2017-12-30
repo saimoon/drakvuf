@@ -3207,7 +3207,6 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
 
         // retrive "procparams_ptr" written by RtlCreateProcessParametersEx
-        doppelganging->procparams_ptr = NULL;
         ctx.addr = doppelganging->procparams_ptr_ptr;
         if ( VMI_FAILURE == vmi_read_64(doppelganging->vmi, &ctx, &doppelganging->procparams_ptr) ) {
             PRINT_DEBUG("Error vmi_reading procparams_ptr_ptr\n");
