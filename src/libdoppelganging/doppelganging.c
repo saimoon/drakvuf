@@ -262,7 +262,7 @@ struct doppelganging
     bool is32bit;
     int hijacked_status;
     addr_t createprocessa;
-    addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection, ntcreateprocessex, ntqueryinformationprocess, rtlinitunicodestring, rtlcreateprocessparametersex, virtualallocex;
+    addr_t loadlibrary, getlasterror, createtransaction, createfiletransacted, virtualalloc, rtlzeromemory, writefile, ntcreatesection, ntcreateprocessex, ntqueryinformationprocess, rtlinitunicodestring, rtlcreateprocessparametersex, virtualallocex, writeprocessmemory;
     addr_t eprocess_base;
 
     uint64_t hTransaction;      // HANDLE
@@ -2326,6 +2326,141 @@ err:
 
 
 
+/*
+    Create stack to call WriteProcessMemory
+
+    BOOL WINAPI WriteProcessMemory(
+      _In_  HANDLE  hProcess,
+      _In_  LPVOID  lpBaseAddress,
+      _In_  LPCVOID lpBuffer,
+      _In_  SIZE_T  nSize,
+      _Out_ SIZE_T  *lpNumberOfBytesWritten
+    );
+
+    Example:
+
+    WriteProcessMemory(hProcess, buffer, buffer, buffer_size, NULL)
+*/
+bool writeprocessmemory_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info)
+{
+    addr_t stack_base, stack_limit;
+
+    // get VMI
+    vmi_instance_t vmi = doppelganging->vmi;
+
+    reg_t rsp = info->regs->rsp;
+    reg_t fsgs = info->regs->gs_base;
+
+    // set Context
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    PRINT_DEBUG(">>>> WriteProcessMemory stack\n");
+
+    // get Stack Base
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKBASE];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_base))
+        goto err;
+
+    // get Stack Limit
+    ctx.addr = fsgs + doppelganging->offsets[NT_TIB_STACKLIMIT];
+    if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &stack_limit))
+        goto err;
+
+    PRINT_DEBUG("Stack Base:  0x%lx\n", stack_base);
+    PRINT_DEBUG("Stack Limit: 0x%lx\n", stack_limit);
+
+    // Push input arguments on the stack
+    uint64_t nul64 = 0;
+
+    // stack start here
+    addr_t addr = rsp;
+    PRINT_DEBUG("Stack start @ 0x%lx\n", addr);
+
+
+    // the stack has to be alligned to 0x8
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
+    //
+    //First 4 parameters to functions are always passed in registers
+    //P1=rcx, P2=rdx, P3=r8, P4=r9
+    //5th parameter onwards (if any) passed via the stack
+
+    // p5
+    // _Out_ SIZE_T *lpNumberOfBytesWritten
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+    PRINT_DEBUG("p5: 0x%lx\n", nul64);
+
+
+    // WARNING: allocate MIN 0x20 "homing space" on stack or call will crash
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &nul64))
+        goto err;
+
+
+    // p1: _In_ HANDLE hProcess
+    info->regs->rcx = doppelganging->hProcess;
+    PRINT_DEBUG("p1: 0x%lx\n", info->regs->rcx);
+
+    // p2: _In_ LPVOID lpBaseAddress
+    info->regs->rdx = doppelganging->procparams_ptr;
+    PRINT_DEBUG("p2: 0x%lx\n", info->regs->rdx);
+
+    // p3: _In_  LPCVOID lpBuffer
+    info->regs->r8 = doppelganging->procparams_ptr;
+    PRINT_DEBUG("p3: 0x%lx\n", info->regs->r8);
+
+    // p3: _In_ SIZE_T nSize
+    info->regs->r9 = doppelganging->procparams.Length;
+    PRINT_DEBUG("p4: 0x%lx\n", info->regs->r9);
+
+
+    // save the return address
+    addr -= 0x8;
+    ctx.addr = addr;
+    if (VMI_FAILURE == vmi_write_64(vmi, &ctx, &info->regs->rip))
+        goto err;
+
+    PRINT_DEBUG("Stack end @ 0x%lx\n", addr);
+
+    // Grow the stack
+    info->regs->rsp = addr;
+
+
+    return 1;
+
+err:
+    PRINT_DEBUG("ERROR: Failed to build WriteProcessMemory stack\n");
+    return 0;
+}
+
+
 
 
 /*
@@ -3225,6 +3360,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         PRINT_DEBUG("EnvironmentSize: 0x%lx\n", doppelganging->procparams.EnvironmentSize);
         PRINT_DEBUG("MaximumLength: 0x%x\n", doppelganging->procparams.MaximumLength);
 
+/*      
+        // dump procparams for debug purpose
         PRINT_DEBUG("procparams: sizeof = 0x%lx\n", sizeof(doppelganging->procparams));
         unsigned char* pointer = (unsigned char*)&doppelganging->procparams;
         while (pointer < (unsigned char*)&doppelganging->procparams + sizeof(doppelganging->procparams)) {
@@ -3233,7 +3370,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
                 PRINT_DEBUG("\n");
             pointer++;
         }
-
+*/
 
         // === start execution chain ===
 
@@ -3252,6 +3389,77 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // goto next chain: VirtualAllocEx
         return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
+
+
+    // --- CHAIN #14 ---
+    // check status is: "waiting for VirtualAllocEx return"
+    if ( doppelganging->hijacked_status == CALL_VIRTUALALLOCEX )
+    {
+        // print VirtualAllocEx return code
+        PRINT_DEBUG("VirtualAllocEx RAX: 0x%lx\n", info->regs->rax);
+
+        // check VirtualAllocEx return: fails==NULL
+        if (!info->regs->rax) {
+            PRINT_DEBUG("Error: VirtualAllocEx() fails\n");
+            return 0;
+        }
+
+
+        // === start execution chain ===
+
+        // setup stack for WriteProcessMemory function call
+        if ( !writeprocessmemory_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for WriteProcessMemory()\n");
+            return 0;
+        }
+
+        // set next chain RIP: WriteProcessMemory
+        info->regs->rip = doppelganging->writeprocessmemory;
+
+        // set status to CALL_WRITEPROCESSMEMORY
+        doppelganging->hijacked_status = CALL_WRITEPROCESSMEMORY;
+
+        // goto next chain: WriteProcessMemory
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+    }
+
+
+
+    // --- CHAIN #15 ---
+    // check status is: "waiting for WriteProcessMemory return"
+    if ( doppelganging->hijacked_status == CALL_WRITEPROCESSMEMORY )
+    {
+        // print WriteProcessMemory return code
+        PRINT_DEBUG("WriteProcessMemory RAX: 0x%lx\n", info->regs->rax);
+
+        // check WriteProcessMemory return: fails==0
+        if (!info->regs->rax) {
+            PRINT_DEBUG("Error: WriteProcessMemory() fails\n");
+            return 0;
+        }
+
+/*
+        // === start execution chain ===
+
+        // setup stack for WriteProcessMemory function call
+        if ( !writeprocessmemory_inputs(doppelganging, info) )
+        {
+            PRINT_DEBUG("Failed to setup stack for WriteProcessMemory()\n");
+            return 0;
+        }
+
+        // set next chain RIP: WriteProcessMemory
+        info->regs->rip = doppelganging->writeprocessmemory;
+
+        // set status to CALL_WRITEPROCESSMEMORY
+        doppelganging->hijacked_status = CALL_WRITEPROCESSMEMORY;
+
+        // goto next chain: WriteProcessMemory
+        return VMI_EVENT_RESPONSE_SET_REGISTERS;
+ */
     }
 
 
@@ -3469,6 +3677,15 @@ int doppelganging_start_app(drakvuf_t drakvuf, vmi_pid_t pid, uint32_t tid, cons
         goto done;
     }
     PRINT_DEBUG("kernel32.dll!VirtualAllocEx: 0x%lx\n", doppelganging.virtualallocex);
+
+    // WriteProcessMemory
+    doppelganging.writeprocessmemory = drakvuf_exportsym_to_va(doppelganging.drakvuf, doppelganging.eprocess_base, "kernel32.dll", "WriteProcessMemory");
+    if (!doppelganging.writeprocessmemory)
+    {
+        PRINT_DEBUG("Failed to get address of kernel32.dll!WriteProcessMemory\n");
+        goto done;
+    }
+    PRINT_DEBUG("kernel32.dll!WriteProcessMemory: 0x%lx\n", doppelganging.writeprocessmemory);
 
 
     // register CR3 trap
