@@ -3229,6 +3229,15 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         PRINT_DEBUG("EnvironmentSize: 0x%lx\n", doppelganging->procparams.EnvironmentSize);
         PRINT_DEBUG("MaximumLength: 0x%x\n", doppelganging->procparams.MaximumLength);
 
+        PRINT_DEBUG("procparams: sizeof = 0x%lx\n", sizeof(doppelganging->procparams));
+        unsigned char* pointer = (unsigned char*)&doppelganging->procparams;
+        while (pointer < (unsigned char*)&doppelganging->procparams + sizeof(doppelganging->procparams)) {
+            PRINT_DEBUG("%x ", *pointer);
+            if ( (pointer % 0x10) == 0 )
+                PRINT_DEBUG("\n");
+            pointer++;
+        }
+
 
         // === start execution chain ===
 
