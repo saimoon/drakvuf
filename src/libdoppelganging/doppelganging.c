@@ -1823,7 +1823,7 @@ err:
     UNICODE_STRING uTargetPath = { 0 };
     RtlInitUnicodeString(&uTargetPath , targetPath);
 */
-bool rtlinitunicodestring_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info, const char* sourceString)
+bool rtlinitunicodestring_inputs(struct doppelganging* doppelganging, drakvuf_trap_info_t* info, uint8_t* sourceString, size_t sourceString_len)
 {
     addr_t stack_base, stack_limit;
 
@@ -1884,7 +1884,7 @@ bool rtlinitunicodestring_inputs(struct doppelganging* doppelganging, drakvuf_tr
 
     // sourceString string (it has to be aligned as well)
     addr_t sourceString_addr;
-    size_t len = strlen(sourceString);
+    size_t len = sourceString_len;
     addr -= len + 0x8 - (len % 0x8);
     sourceString_addr = addr;                // string address
     ctx.addr = addr;
@@ -1894,7 +1894,12 @@ bool rtlinitunicodestring_inputs(struct doppelganging* doppelganging, drakvuf_tr
     ctx.addr = addr + len;
     if (VMI_FAILURE == vmi_write_8(vmi, &ctx, &nul8))
         goto err;
-    PRINT_DEBUG("- Var. sourceString (string): %s (len 0x%lx) @ 0x%lx\n", sourceString, len, sourceString_addr);
+
+    PRINT_DEBUG("- Var. sourceString (len 0x%lx) @ 0x%lx\n", len, sourceString_addr);
+    PRINT_DEBUG("Content: ");
+    for (size_t c=0; c < len; c++)
+        PRINT_DEBUG("%x ", sourceString[c]);
+    PRINT_DEBUG("\n");
 
 
     //http://www.codemachine.com/presentations/GES2010.TRoy.Slides.pdf
@@ -3403,8 +3408,15 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         local_proc_image = getImageFromPath(local_proc_image);
         PRINT_DEBUG("Extract Image from local_proc path: %s\n", local_proc_image);
 
+        size_t wlen = (strlen(local_proc_image) + 1) * 2;
+        uint8_t w_local_proc_image[wlen];
+        memset(w_local_proc_image, 0, sizeof(w_local_proc_image));
+        for (uint64_t c=0; c < strlen(local_proc_image); c++)
+            w_local_proc_image[2*c] = (uint8_t) local_proc_image[c];
+
+
         // setup stack for RtlInitUnicodeString function call
-        if ( !rtlinitunicodestring_inputs(doppelganging, info, local_proc_image) )
+        if ( !rtlinitunicodestring_inputs(doppelganging, info, w_local_proc_image, wlen) )
         {
             PRINT_DEBUG("Failed to setup stack for RtlInitUnicodeString()\n");
             return 0;
@@ -3441,8 +3453,15 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         stripPathToDir(local_proc_currdir);
         PRINT_DEBUG("Extract directory from local_proc path: %s\n", local_proc_currdir);
 
+        size_t wlen = (strlen(local_proc_currdir) + 1) * 2;
+        uint8_t w_local_proc_currdir[wlen];
+        memset(w_local_proc_currdir, 0, sizeof(w_local_proc_currdir));
+        for (uint64_t c=0; c < strlen(local_proc_currdir); c++)
+            w_local_proc_currdir[2*c] = (uint8_t) local_proc_currdir[c];
+
+
         // setup stack for RtlInitUnicodeString function call
-        if ( !rtlinitunicodestring_inputs(doppelganging, info, local_proc_currdir) )
+        if ( !rtlinitunicodestring_inputs(doppelganging, info, w_local_proc_currdir, wlen) )
         {
             PRINT_DEBUG("Failed to setup stack for RtlInitUnicodeString()\n");
             return 0;
@@ -3478,8 +3497,15 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         char local_proc_dll[] = "C:\\Windows\\System32";
         PRINT_DEBUG("local_proc_dll path: %s\n", local_proc_dll);
 
+        size_t wlen = (strlen(local_proc_dll) + 1) * 2;
+        uint8_t w_local_proc_dll[wlen];
+        memset(w_local_proc_dll, 0, sizeof(w_local_proc_dll));
+        for (uint64_t c=0; c < strlen(local_proc_dll); c++)
+            w_local_proc_dll[2*c] = (uint8_t) local_proc_dll[c];
+
+
         // setup stack for RtlInitUnicodeString function call
-        if ( !rtlinitunicodestring_inputs(doppelganging, info, local_proc_dll) )
+        if ( !rtlinitunicodestring_inputs(doppelganging, info, w_local_proc_dll, wlen) )
         {
             PRINT_DEBUG("Failed to setup stack for RtlInitUnicodeString()\n");
             return 0;
