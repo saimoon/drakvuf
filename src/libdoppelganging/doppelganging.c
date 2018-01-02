@@ -2948,8 +2948,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for LoadLibrary function call
         if ( !loadlibrary_inputs(doppelganging, info, "ktmw32.dll") )
         {
-            PRINT_DEBUG("Error: failed to setup stack for LoadLibrary(KtmW32.dll)\n");
-            return 0;
+            PRINT_DEBUG("ERROR: failed to setup stack for LoadLibrary(KtmW32.dll)\n");
+            goto fatalerr;
         }
         
         // set next chain RIP: LoadLibrary
@@ -2993,16 +2993,16 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check LoadLibraryA return: fails==NULL
         if (! info->regs->rax) {
-            PRINT_DEBUG("Error: LoadLibrary(KtmW32.dll) fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: LoadLibrary(KtmW32.dll) fails\n");
+            goto fatalerr;
         }
 
         // Library ktmw32.dll loaded. Now we can get CreateTransaction address
         doppelganging->createtransaction = drakvuf_exportsym_to_va(doppelganging->drakvuf, doppelganging->eprocess_base, "ktmw32.dll", "CreateTransaction");
         if (!doppelganging->createtransaction)
         {
-            PRINT_DEBUG("Failed to get address of ktmw32.dll!CreateTransaction\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to get address of ktmw32.dll!CreateTransaction\n");
+            goto fatalerr;
         }
         PRINT_DEBUG("--> ktmw32.dll!CreateTransaction: 0x%lx\n", doppelganging->createtransaction);
 
@@ -3011,8 +3011,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for CreateTransaction function call
         if ( !createtransaction_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for CreateTransaction()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for CreateTransaction()\n");
+            goto fatalerr;
         }
         
         // set next chain RIP: CreateTransaction
@@ -3035,8 +3035,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check CreateTransaction return: fails==INVALID_HANDLE_VALUE (-1)
         if (info->regs->rax == 0xffffffffffffffff) {
-            PRINT_DEBUG("Error: CreateTransaction() fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: CreateTransaction() fails\n");
+            goto fatalerr;
         }
 
         // save HANDLE returned by CreateTransaction
@@ -3047,8 +3047,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for CreateFileTransacted function call
         if ( !createfiletransacted_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for CreateFileTransacted()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for CreateFileTransacted()\n");
+            goto fatalerr;
         }
         
         // set next chain RIP: CreateFileTransacted
@@ -3072,8 +3072,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check CreateFileTransacted return: fails==INVALID_HANDLE_VALUE (-1)
         if (info->regs->rax == 0xffffffffffffffff) {
-            PRINT_DEBUG("Error: CreateFileTransacted() fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: CreateFileTransacted() fails\n");
+            goto fatalerr;
         }
 
         // save HANDLE returned by CreateFileTransacted
@@ -3083,8 +3083,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         if ( !readhostfile(doppelganging) )
         {
-            PRINT_DEBUG("Failed to read host file\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to read host file\n");
+            goto fatalerr;
         }
 
 
@@ -3093,8 +3093,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for VirtualAlloc function call
         if ( !virtualalloc_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for VirtualAlloc()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for VirtualAlloc()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: VirtualAlloc
@@ -3117,8 +3117,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check VirtualAlloc return: fails==NULL
         if (! info->regs->rax) {
-            PRINT_DEBUG("Error: VirtualAlloc() fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: VirtualAlloc() fails\n");
+            goto fatalerr;
         }
 
         // save address returned by VirtualAlloc
@@ -3130,8 +3130,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for RtlZeroMemory function call
         if ( !rtlzeromemory_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for RtlZeroMemory()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for RtlZeroMemory()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: RtlZeroMemory
@@ -3159,8 +3159,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // write host file buffer to process userspace buffer
         ctx.addr = doppelganging->guestfile_buffer;
         if (VMI_FAILURE == vmi_write(doppelganging->vmi, &ctx, doppelganging->hostfile_len, (void*) doppelganging->hostfile_buffer, NULL)) {
-            PRINT_DEBUG("Failed to write host file buffer to process userspace buffer\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to write host file buffer to process userspace buffer\n");
+            goto fatalerr;
         }
         PRINT_DEBUG("Copied host buffer (len 0x%lx) to process userspace memory @ 0x%lx\n", doppelganging->hostfile_len, doppelganging->guestfile_buffer);
 
@@ -3171,8 +3171,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for WriteFile function call
         if ( !writefile_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for WriteFile()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for WriteFile()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: WriteFile
@@ -3195,22 +3195,22 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check WriteFile return: fails==NULL
         if (! info->regs->rax) {
-            PRINT_DEBUG("Error: WriteFile() fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: WriteFile() fails\n");
+            goto fatalerr;
         }
 
         // check WriteFile() bytes written
         uint32_t bytesWritten = 0;
         ctx.addr = doppelganging->dwBytesWritten;
         if ( VMI_FAILURE == vmi_read_32(doppelganging->vmi, &ctx, &bytesWritten) ) {
-            PRINT_DEBUG("Error vmi_reading dwBytesWritten\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed vmi_reading dwBytesWritten\n");
+            goto fatalerr;
         }
         PRINT_DEBUG("dwBytesWritten: 0x%x\n", bytesWritten);
 
         if ( bytesWritten < doppelganging->hostfile_len ) {
-            PRINT_DEBUG("Error: WriteFile() dwBytesWritten is less than buffer len\n");
-            return 0;
+            PRINT_DEBUG("ERROR: WriteFile() dwBytesWritten is less than buffer len\n");
+            goto fatalerr;
         }
 
 
@@ -3219,8 +3219,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for NtCreateSection function call
         if ( !ntcreatesection_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for NtCreateSection()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for NtCreateSection()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: NtCreateSection
@@ -3243,8 +3243,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check NtCreateSection return: fails!=STATUS_SUCCESS 0x00
         if (info->regs->rax) {
-            PRINT_DEBUG("Error: NtCreateSection() fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: NtCreateSection() fails\n");
+            goto fatalerr;
         }
 
 
@@ -3252,8 +3252,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         doppelganging->hSection = 0;
         ctx.addr = doppelganging->hSection_ptr;
         if ( VMI_FAILURE == vmi_read_64(doppelganging->vmi, &ctx, &doppelganging->hSection) ) {
-            PRINT_DEBUG("Error vmi_reading hSection_ptr\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed vmi_reading hSection_ptr\n");
+            goto fatalerr;
         }
         PRINT_DEBUG("hSection: 0x%lx\n", doppelganging->hSection);
 
@@ -3263,8 +3263,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for NtCreateProcessEx function call
         if ( !ntcreateprocessex_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for NtCreateProcessEx()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for NtCreateProcessEx()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: NtCreateProcessEx
@@ -3287,8 +3287,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check NtCreateProcessEx return: fails!=STATUS_SUCCESS 0x00
         if (info->regs->rax) {
-            PRINT_DEBUG("Error: NtCreateProcessEx() fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: NtCreateProcessEx() fails\n");
+            goto fatalerr;
         }
 
 
@@ -3296,11 +3296,10 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         doppelganging->hProcess = 0;
         ctx.addr = doppelganging->hProcess_ptr;
         if ( VMI_FAILURE == vmi_read_64(doppelganging->vmi, &ctx, &doppelganging->hProcess) ) {
-            PRINT_DEBUG("Error vmi_reading hProcess_ptr\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed vmi_reading hProcess_ptr\n");
+            goto fatalerr;
         }
         PRINT_DEBUG("hProcess: 0x%lx\n", doppelganging->hProcess);
-
 
 
         // === get Address Entry Point ===
@@ -3318,34 +3317,13 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         PRINT_DEBUG("buffer IMAGE_NT_HEADERS64->OptionalHeader->AddressOfEntryPoint: 0x%x\n", pimgnthdr_buffer->OptionalHeader.AddressOfEntryPoint);
 
 
-/*
-        // I need to retrive ImageBaseAddress of new process
-        PROCESS_BASIC_INFORMATION pi = { 0 };
-        DWORD ReturnLength = 0;
-        status = NtQueryInformationProcess(
-            hProcess,
-            ProcessBasicInformation,
-            &pi,
-            sizeof(PROCESS_BASIC_INFORMATION),
-            &ReturnLength
-        );
-        if (status != STATUS_SUCCESS) {
-            ERROR
-        }
-        // here I get PEB of process (vmi_read it)
-        PPEB remote_peb_addr = pi.PebBaseAddress;
-
-        // inside PEB there is the value I need: ImageBaseAddress
-*/
-
-
         // === start execution chain ===
 
         // setup stack for NtQueryInformationProcess function call
         if ( !ntqueryinformationprocess_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for NtQueryInformationProcess()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for NtQueryInformationProcess()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: NtQueryInformationProcess
@@ -3368,20 +3346,19 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check NtQueryInformationProcess return: fails!=STATUS_SUCCESS 0x00
         if (info->regs->rax) {
-            PRINT_DEBUG("Error: NtQueryInformationProcess() fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: NtQueryInformationProcess() fails\n");
+            goto fatalerr;
         }
 
 
         memset(&doppelganging->pbi, 0, sizeof(struct process_basic_information));
         ctx.addr = doppelganging->pbi_ptr;
         if ( VMI_FAILURE == vmi_read(doppelganging->vmi, &ctx, sizeof(struct process_basic_information), &doppelganging->pbi, NULL) ) {
-            PRINT_DEBUG("Error vmi_reading pbi_ptr\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed vmi_reading pbi_ptr\n");
+            goto fatalerr;
         }
         PRINT_DEBUG("PebBaseAddress: 0x%lx\n", doppelganging->pbi.PebBaseAddress);
         PRINT_DEBUG("UniqueProcessId: 0x%lx\n", doppelganging->pbi.UniqueProcessId);
-
 
 
         // new process context
@@ -3393,8 +3370,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         addr_t image_base_address = 0;
         if (VMI_FAILURE == vmi_read_addr(doppelganging->vmi, &newctx, &image_base_address)) {
-            PRINT_DEBUG("Failed to get ImageBaseAddress from PEB\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to get ImageBaseAddress from PEB\n");
+            goto fatalerr;
         }
         PRINT_DEBUG("ImageBaseAddress: 0x%lx\n", image_base_address);
 
@@ -3408,6 +3385,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         local_proc_image = getImageFromPath(local_proc_image);
         PRINT_DEBUG("Extract Image from local_proc path: %s\n", local_proc_image);
 
+        // transform ASCII to windows UNICODE
         size_t wlen = (strlen(local_proc_image) + 1) * 2;
         uint8_t w_local_proc_image[wlen];
         memset(w_local_proc_image, 0, sizeof(w_local_proc_image));
@@ -3418,8 +3396,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for RtlInitUnicodeString function call
         if ( !rtlinitunicodestring_inputs(doppelganging, info, w_local_proc_image, wlen) )
         {
-            PRINT_DEBUG("Failed to setup stack for RtlInitUnicodeString()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for RtlInitUnicodeString()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: RtlInitUnicodeString
@@ -3453,6 +3431,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         stripPathToDir(local_proc_currdir);
         PRINT_DEBUG("Extract directory from local_proc path: %s\n", local_proc_currdir);
 
+        // transform ASCII to windows UNICODE
         size_t wlen = (strlen(local_proc_currdir) + 1) * 2;
         uint8_t w_local_proc_currdir[wlen];
         memset(w_local_proc_currdir, 0, sizeof(w_local_proc_currdir));
@@ -3463,8 +3442,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for RtlInitUnicodeString function call
         if ( !rtlinitunicodestring_inputs(doppelganging, info, w_local_proc_currdir, wlen) )
         {
-            PRINT_DEBUG("Failed to setup stack for RtlInitUnicodeString()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for RtlInitUnicodeString()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: RtlInitUnicodeString
@@ -3497,6 +3476,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         char local_proc_dll[] = "C:\\Windows\\System32";
         PRINT_DEBUG("local_proc_dll path: %s\n", local_proc_dll);
 
+        // transform ASCII to windows UNICODE
         size_t wlen = (strlen(local_proc_dll) + 1) * 2;
         uint8_t w_local_proc_dll[wlen];
         memset(w_local_proc_dll, 0, sizeof(w_local_proc_dll));
@@ -3507,8 +3487,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for RtlInitUnicodeString function call
         if ( !rtlinitunicodestring_inputs(doppelganging, info, w_local_proc_dll, wlen) )
         {
-            PRINT_DEBUG("Failed to setup stack for RtlInitUnicodeString()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for RtlInitUnicodeString()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: RtlInitUnicodeString
@@ -3541,8 +3521,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for RtlCreateProcessParametersEx function call
         if ( !rtlcreateprocessparametersex_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for RtlCreateProcessParametersEx()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for RtlCreateProcessParametersEx()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: RtlCreateProcessParametersEx
@@ -3565,16 +3545,16 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check RtlCreateProcessParametersEx return: fails!=STATUS_SUCCESS 0x00
         if (info->regs->rax) {
-            PRINT_DEBUG("Error: RtlCreateProcessParametersEx() fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: RtlCreateProcessParametersEx() fails\n");
+            goto fatalerr;
         }
 
 
         // retrive "procparams_ptr" written by RtlCreateProcessParametersEx
         ctx.addr = doppelganging->procparams_ptr_ptr;
         if ( VMI_FAILURE == vmi_read_64(doppelganging->vmi, &ctx, &doppelganging->procparams_ptr) ) {
-            PRINT_DEBUG("Error vmi_reading procparams_ptr_ptr\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed vmi_reading procparams_ptr_ptr\n");
+            goto fatalerr;
         }
         PRINT_DEBUG("procparams_ptr = 0x%lx\n", doppelganging->procparams_ptr);
 
@@ -3582,8 +3562,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         memset(&doppelganging->procparams, 0, sizeof(rtl_user_process_parameters_t));
         ctx.addr = doppelganging->procparams_ptr;
         if ( VMI_FAILURE == vmi_read(doppelganging->vmi, &ctx, sizeof(rtl_user_process_parameters_t), &doppelganging->procparams, NULL) ) {
-            PRINT_DEBUG("Error vmi_reading procparams_ptr\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed vmi_reading procparams_ptr\n");
+            goto fatalerr;
         }
         PRINT_DEBUG("Length: 0x%x\n", doppelganging->procparams.Length);
         PRINT_DEBUG("EnvironmentSize: 0x%lx\n", doppelganging->procparams.EnvironmentSize);
@@ -3606,8 +3586,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for VirtualAllocEx function call
         if ( !virtualallocex_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for VirtualAllocEx()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for VirtualAllocEx()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: VirtualAllocEx
@@ -3631,8 +3611,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check VirtualAllocEx return: fails==NULL
         if (!info->regs->rax) {
-            PRINT_DEBUG("Error: VirtualAllocEx() fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: VirtualAllocEx() fails\n");
+            goto fatalerr;
         }
 
 
@@ -3641,8 +3621,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for WriteProcessMemory function call
         if ( !writeprocessmemory_inputs(doppelganging, info, doppelganging->procparams_ptr, doppelganging->procparams_ptr, doppelganging->procparams.Length) )
         {
-            PRINT_DEBUG("Failed to setup stack for WriteProcessMemory()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for WriteProcessMemory()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: WriteProcessMemory
@@ -3666,8 +3646,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check WriteProcessMemory return: fails==0
         if (!info->regs->rax) {
-            PRINT_DEBUG("Error: WriteProcessMemory() fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: WriteProcessMemory() fails\n");
+            goto fatalerr;
         }
 
 
@@ -3676,8 +3656,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for WriteProcessMemory function call
         if ( !writeprocessmemory_inputs(doppelganging, info, doppelganging->pbi.PebBaseAddress + doppelganging->offsets[PEB_PROCESSPARAMETERS], doppelganging->procparams_ptr_ptr, sizeof(addr_t)) )
         {
-            PRINT_DEBUG("Failed to setup stack for WriteProcessMemory()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for WriteProcessMemory()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: WriteProcessMemory
@@ -3700,8 +3680,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
         // check WriteProcessMemory return: fails==0
         if (!info->regs->rax) {
-            PRINT_DEBUG("Error: WriteProcessMemory() fails\n");
-            return 0;
+            PRINT_DEBUG("ERROR: WriteProcessMemory() fails\n");
+            goto fatalerr;
         }
 
 
@@ -3710,8 +3690,8 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // setup stack for NtCreateThreadEx function call
         if ( !ntcreatethreadex_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for NtCreateThreadEx()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for NtCreateThreadEx()\n");
+            goto fatalerr;
         }
 
         // set next chain RIP: NtCreateThreadEx
@@ -3725,24 +3705,37 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     }
 
 
+    // We are now in the return path from latest call
+    PRINT_DEBUG(">>> RESTORE original Trap RIP and close injection\n");
+
+    // remove trapframe breakpoint trap
+    drakvuf_interrupt(drakvuf, -1);
+    drakvuf_remove_trap(drakvuf, &doppelganging->bp, NULL);
 
 
-/* Call to be used in case of fails: GetLastError()
+    // print latest call return code
+    PRINT_DEBUG("RAX: 0x%lx\n", info->regs->rax);
+
+
+    // restore all regs and continue execution to trap frame return point
+    memcpy(info->regs, &doppelganging->saved_regs, sizeof(x86_registers_t));
+    return VMI_EVENT_RESPONSE_SET_REGISTERS;
+
+
+getlasterror:
+    // Call to be used in case of fails: GetLastError()
     // --- CHAIN #FAILS ---
     // check current RIP is trapframe breakpoint and check hijacked_status
-    if ( doppelganging->hijacked_status == CALL_CREATEFILETRANSACTED && 
+    if ( doppelganging->hijacked_status > CALL_NONE && 
          info->regs->rax == 0xffffffffffffffff )
     {
-        // print CreateTransaction return code
-        PRINT_DEBUG("CreateFileTransacted RAX: 0x%lx\n", info->regs->rax);
-
         // === start execution chain ===
 
         // setup stack for GetLastError function call
         if ( !getlasterror_inputs(doppelganging, info) )
         {
-            PRINT_DEBUG("Failed to setup stack for GetLastError()\n");
-            return 0;
+            PRINT_DEBUG("ERROR: Failed to setup stack for GetLastError()\n");
+            goto fatalerr;
         }
         
         // set next chain RIP: GetLastError
@@ -3754,17 +3747,14 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // goto next chain: GetLastError
         return VMI_EVENT_RESPONSE_SET_REGISTERS;
     }
-*/
 
-    // We are now in the return path from latest call
+fatalerr:
+    // Fatal Error: try to exit in a clean state
+    PRINT_DEBUG("FATAL ERROR: try to exit in a clean state\n");
 
     // remove trapframe breakpoint trap
     drakvuf_interrupt(drakvuf, -1);
     drakvuf_remove_trap(drakvuf, &doppelganging->bp, NULL);
-
-
-    // print latest call return code
-    PRINT_DEBUG("RAX: 0x%lx\n", info->regs->rax);
 
 
     // restore all regs and continue execution to trap frame return point
