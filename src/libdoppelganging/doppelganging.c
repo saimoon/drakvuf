@@ -3073,7 +3073,7 @@ event_response_t dg_int3_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         // check CreateFileTransacted return: fails==INVALID_HANDLE_VALUE (-1)
         if (info->regs->rax == 0xffffffffffffffff) {
             PRINT_DEBUG("ERROR: CreateFileTransacted() fails\n");
-            goto fatalerr;
+            goto getlasterror;
         }
 
         // save HANDLE returned by CreateFileTransacted
@@ -3726,7 +3726,7 @@ getlasterror:
     // Call to be used in case of fails: GetLastError()
     // --- CHAIN #FAILS ---
     // check current RIP is trapframe breakpoint and check hijacked_status
-    if ( doppelganging->hijacked_status > CALL_NONE && 
+    if ( doppelganging->hijacked_status >= CALL_NONE && 
          info->regs->rax == 0xffffffffffffffff )
     {
         // === start execution chain ===
