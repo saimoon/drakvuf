@@ -5,10 +5,8 @@
 [submodule "libvmi"]
 	path = libvmi
 	url = https://github.com/saimoon/libvmi
-	branch = drakvuf
 	ignore = dirty
 [submodule "rekall"]
 	path = rekall
 	url = https://github.com/saimoon/rekall
-	branch = stable-v1.6.0
 	ignore = dirty
