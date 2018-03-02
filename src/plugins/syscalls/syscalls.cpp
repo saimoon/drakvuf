@@ -106,6 +106,7 @@
 #include <glib.h>
 #include <inttypes.h>
 #include <libvmi/libvmi.h>
+#include <json-c/json.h>
 #include "syscalls.h"
 #include "winscproto.h"
 
@@ -299,6 +300,135 @@ static event_response_t win_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
             printf("\n");
             break;
+
+        case OUTPUT_JSON:
+
+            // Root json object
+            json_object * jobj = json_object_new_object();
+
+            // TYPE
+            json_object *jtypesyscall = json_object_new_string("syscall");
+
+            // VCPU
+            json_object *jvcpu = json_object_new_int(info->vcpu);
+
+
+            // CR3
+            json_object *jregcr3 = json_object_new_int64(info->regs->cr3);
+
+            // RSP
+            json_object *jregrsp = json_object_new_int64(info->regs->rsp);
+
+            // REG
+            json_object * jreg = json_object_new_object();
+            json_object_object_add(jreg, "cr3", jregcr3);
+            json_object_object_add(jreg, "rsp", jregrsp);
+
+
+            // PROC_NAME
+            json_object *jprocname = json_object_new_string(info->proc_data.name);
+
+            // PROC_USERID
+            json_object *jprocuserid = json_object_new_int(info->proc_data.userid);
+
+            // PROCESS
+            json_object * jproc = json_object_new_object();
+            json_object_object_add(jproc, "name", jprocname);
+            json_object_object_add(jproc, "userid", jprocuserid);
+
+
+            // TRAP_MODULE
+            json_object *jtrapmodule = json_object_new_string(info->trap->breakpoint.module);
+
+            // TRAP_NAME
+            json_object *jtrapname = json_object_new_string(info->trap->name);
+
+            // TRAP
+            json_object *jtrap = json_object_new_object();
+            json_object_object_add(jtrap, "module", jtrapmodule);
+            json_object_object_add(jtrap, "name", jtrapname);
+
+            // ROOT Object
+            json_object_object_add(jobj, "type", jtypesyscall);
+            json_object_object_add(jobj, "vcpu", jvcpu);
+            json_object_object_add(jobj, "regs", jreg);
+            json_object_object_add(jobj, "process", jproc);
+            json_object_object_add(jobj, "trap", jtrap);
+
+            if ( nargs )
+            {
+                // NARGS
+                json_object *jnargs = json_object_new_int(nargs);
+                json_object_object_add(jobj, "nargs", jnargs);
+
+                // ARGS
+                json_object *jargs = json_object_new_array();
+
+                for ( i=0; i<nargs; i++ )
+                {
+                    // ARG<i>
+                    json_object *jargdir = json_object_new_string(win_arg_direction_names[wsc->args[i].dir]);
+                    json_object *jargtype = json_object_new_string(win_type_names[wsc->args[i].type]);
+                    json_object *jargname = json_object_new_string(wsc->args[i].name);
+
+                    json_object *jarg = json_object_new_object();
+                    json_object_object_add(jarg, "dir", jargdir);
+                    json_object_object_add(jarg, "type", jargtype);
+                    json_object_object_add(jarg, "name", jargname);
+
+                    addr_t val = 0;
+                    json_object *jargvalue;
+                    if ( 4 == s->reg_size )
+                    {
+                        val = buf32[i];
+                        jargvalue = json_object_new_int(val);
+                    }
+                    else
+                    {
+                        val = buf64[i];
+                        jargvalue = json_object_new_int64(val);
+                    }
+                    json_object_object_add(jarg, "value", jargvalue);
+
+                    json_object *jargunicode;
+                    if ( wsc->args[i].dir == DIR_IN || wsc->args[i].dir == DIR_INOUT )
+                    {
+                        if ( wsc->args[i].type == PUNICODE_STRING)
+                        {
+                            ctx.addr = val;
+                            unicode_string_t* us = read_unicode(vmi, &ctx);
+
+                            if ( us )
+                            {
+                                jargunicode = json_object_new_string(us->contents);
+                                json_object_object_add(jarg, "unicode", jargunicode);
+                                vmi_free_unicode_str(us);
+                            }
+                        }
+
+                        else if ( !strcmp(wsc->args[i].name, "FileHandle") )
+                        {
+                            unicode_string_t* us = get_filename_from_handle(s, drakvuf, info, vmi, &ctx, val);
+
+                            if ( us )
+                            {
+                                jargunicode = json_object_new_string(us->contents);
+                                json_object_object_add(jarg, "unicode", jargunicode);
+                                vmi_free_unicode_str(us);
+                            }
+                        }
+                    }
+
+                    json_object_array_add(jargs, jarg);
+                }
+
+                json_object_object_add(jobj, "args", jargs);
+            }
+
+            // print ROOT json object
+            printf("%s\n", json_object_to_json_string(jobj));
+            break;
+
         default:
         case OUTPUT_DEFAULT:
             printf("[SYSCALL] vCPU:%" PRIu32 " CR3:0x%" PRIx64 ",%s %s:%" PRIi64" %s!%s",
