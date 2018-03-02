@@ -125,5 +125,20 @@ do
     ifconfig xenbr1.$i 192.168.$i.1 netmask 255.255.255.0 up
 
     # Prohibit VLANs talking to each other
-    iptables -A FORWARD -i xenbr1.$i -o !xenbr0 -j DROP
+    for j in `seq 1 $1`;
+    do
+       if [ $j -ne $i ]
+       then 
+           ovs-ofctl add-flow xenbr1 "table=0,ip,nw_src=192.168.$i.0/24,ip,nw_dst=192.168.$j.0/24,actions=drop"
+       fi
+    done
+
+    # Configure DHCP server for the current VLAN
+    echo "interface=xenbr1.$i" >> /etc/dnsmasq.conf
+    echo "dhcp-range=set:vlan$i,192.168.$i.1,192.168.$i.254" >> /etc/dnsmasq.conf
+    echo "dhcp-host=net:vlan$i,00:06:5B:BA:7C:01,192.168.$i.2" >> /etc/dnsmasq.conf
+    echo "dhcp-option = tag:vlan$i, option:router, 192.168.$i.1" >> /etc/dnsmasq.conf
+    echo "dhcp-option = tag:vlan$i, option:dns-server, 8.8.8.8" >> /etc/dnsmasq.conf
 done
+
+/etc/init.d/dnsmasq start
