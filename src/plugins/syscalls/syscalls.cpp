@@ -302,6 +302,7 @@ static event_response_t win_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             break;
 
         case OUTPUT_JSON:
+            {
 
             // Root json object
             json_object * jobj = json_object_new_object();
@@ -326,7 +327,11 @@ static event_response_t win_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
 
             // PROC_NAME
-            json_object *jprocname = json_object_new_string(info->proc_data.name);
+            json_object *jprocname;
+            if ( ! info->proc_data.name )
+                jprocname = json_object_new_string("-");
+            else
+                jprocname = json_object_new_string(info->proc_data.name);
 
             // PROC_USERID
             json_object *jprocuserid = json_object_new_int(info->proc_data.userid);
@@ -400,8 +405,8 @@ static event_response_t win_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
                             if ( us )
                             {
-                                jargunicode = json_object_new_string(us->contents);
-                                json_object_object_add(jarg, "unicode", jargunicode);
+//                                jargunicode = json_object_new_string(us->contents);
+//                                json_object_object_add(jarg, "unicode", jargunicode);
                                 vmi_free_unicode_str(us);
                             }
                         }
@@ -412,8 +417,8 @@ static event_response_t win_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
                             if ( us )
                             {
-                                jargunicode = json_object_new_string(us->contents);
-                                json_object_object_add(jarg, "unicode", jargunicode);
+//                                jargunicode = json_object_new_string(us->contents);
+//                                json_object_object_add(jarg, "unicode", jargunicode);
                                 vmi_free_unicode_str(us);
                             }
                         }
@@ -428,6 +433,7 @@ static event_response_t win_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             // print ROOT json object
             printf("%s\n", json_object_to_json_string(jobj));
             break;
+            }
 
         default:
         case OUTPUT_DEFAULT:
