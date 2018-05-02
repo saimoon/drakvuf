@@ -111,6 +111,7 @@ extern "C" {
 
 #pragma GCC visibility push(default)
 
+#include <glib.h>
 #include <libvmi/libvmi.h>
 #include <libvmi/events.h>
 
@@ -203,6 +204,7 @@ typedef struct drakvuf_trap drakvuf_trap_t;
 
 typedef struct drakvuf_trap_info
 {
+    GTimeVal timestamp;
     unsigned int vcpu;
     uint16_t altp2m_idx;
     proc_data_t proc_data ; /* Current executing process data */
@@ -376,23 +378,14 @@ bool drakvuf_obj_ref_by_handle(drakvuf_t drakvuf,
                                object_manager_object_t obj_type_arg,
                                addr_t* obj_body_addr);
 
+unicode_string_t* drakvuf_read_unicode(drakvuf_t drakvuf, drakvuf_trap_info_t* info, addr_t addr);
+
+unicode_string_t* drakvuf_read_unicode_va(vmi_instance_t vmi, addr_t vaddr, vmi_pid_t pid);
+
 bool drakvuf_get_module_base_addr( drakvuf_t drakvuf,
                                    addr_t module_list_head,
                                    const char* module_name,
                                    addr_t* base_addr );
-
-char* drakvuf_reg_keybody_path( drakvuf_t drakvuf,
-                                drakvuf_trap_info_t* info,
-                                addr_t p_key_body );
-
-char* drakvuf_reg_keycontrolblock_path( drakvuf_t drakvuf,
-                                        drakvuf_trap_info_t* info,
-                                        addr_t p_key_control_block );
-
-char* drakvuf_reg_keyhandle_path( drakvuf_t drakvuf,
-                                  drakvuf_trap_info_t* info,
-                                  addr_t key_handle,
-                                  addr_t process_arg );
 
 status_t drakvuf_get_process_ppid( drakvuf_t drakvuf,
                                    addr_t process_base,
@@ -401,6 +394,28 @@ status_t drakvuf_get_process_ppid( drakvuf_t drakvuf,
 bool drakvuf_get_current_process_data( drakvuf_t drakvuf,
                                        uint64_t vcpu_id,
                                        proc_data_t* proc_data );
+
+char* drakvuf_reg_keyhandle_path( drakvuf_t drakvuf,
+                                  drakvuf_trap_info_t* info,
+                                  addr_t key_handle,
+                                  addr_t process_arg );
+
+/*---------------------------------------------------------
+ * Output helpers
+ */
+
+typedef enum
+{
+    OUTPUT_DEFAULT,
+    OUTPUT_CSV,
+    OUTPUT_KV,
+    __OUTPUT_MAX
+} output_format_t;
+
+// Printf helpers for timestamp.
+#define FORMAT_TIMEVAL "%" PRId64 ".%06" PRId64
+#define UNPACK_TIMEVAL(t) (t).tv_sec, (t).tv_usec
+
 #pragma GCC visibility pop
 
 #ifdef __cplusplus

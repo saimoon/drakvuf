@@ -128,9 +128,11 @@ static gpointer timer(gpointer data)
 }
 
 int drakvuf_c::start_plugins(const bool* plugin_list,
-                             const char* dump_folder,   // PLUGIN_FILEDELETE
-                             bool cpuid_stealth,        // PLUGIN_CPUIDMON
-                             const char* tcpip_profile) // PLUGIN_SOCKETMON
+                             const char* dump_folder,          // PLUGIN_FILEDELETE
+                             bool dump_modified_files,         // PLUGIN_FILEDELETE
+                             bool cpuid_stealth,               // PLUGIN_CPUIDMON
+                             const char* tcpip_profile,        // PLUGIN_SOCKETMON
+                             const char* syscalls_filter_file) // PLUGIN_SYSCALLS
 {
     int i, rc;
 
@@ -145,7 +147,8 @@ int drakvuf_c::start_plugins(const bool* plugin_list,
                     struct filedelete_config c =
                     {
                         .rekall_profile = this->rekall_profile,
-                        .dump_folder = dump_folder
+                        .dump_folder = dump_folder,
+                        .dump_modified_files = dump_modified_files
                     };
 
                     rc = this->plugins->start((drakvuf_plugin_t)i, &c);
@@ -162,6 +165,17 @@ int drakvuf_c::start_plugins(const bool* plugin_list,
                     {
                         .rekall_profile = this->rekall_profile,
                         .tcpip_profile = tcpip_profile
+                    };
+                    rc = this->plugins->start((drakvuf_plugin_t)i, &c);
+                    break;
+                }
+
+                case PLUGIN_SYSCALLS:
+                {
+                    struct syscalls_config c =
+                    {
+                        .rekall_profile = this->rekall_profile,
+                        .syscalls_filter_file = syscalls_filter_file
                     };
                     rc = this->plugins->start((drakvuf_plugin_t)i, &c);
                     break;
@@ -256,9 +270,9 @@ void drakvuf_c::resume()
     drakvuf_resume(this->drakvuf);
 }
 
-int drakvuf_c::inject_cmd(vmi_pid_t injection_pid, uint32_t injection_tid, const char* inject_cmd, injection_method_t method)
+int drakvuf_c::inject_cmd(vmi_pid_t injection_pid, uint32_t injection_tid, const char* inject_cmd, injection_method_t method, output_format_t format)
 {
-    int rc = injector_start_app(this->drakvuf, injection_pid, injection_tid, inject_cmd, method);
+    int rc = injector_start_app(this->drakvuf, injection_pid, injection_tid, inject_cmd, method, format);
     if (!rc)
         fprintf(stderr, "Process startup failed\n");
     return rc;
@@ -292,7 +306,9 @@ static event_response_t wait_for_process_cb(drakvuf_t drakvuf, drakvuf_trap_info
     UNUSED(drakvuf);
     drakvuf_c* dc = (drakvuf_c*)info->trap->data;
 
-    if ( !strcmp(info->proc_data.name, dc->process_start_name) )
+    const char* begin_name = strrchr(info->proc_data.name, '\\');
+
+    if ( !strcmp(begin_name ? begin_name + 1 : info->proc_data.name, dc->process_start_name) )
     {
         dc->interrupt(-1);
         dc->process_start_detected = 1;

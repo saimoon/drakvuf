@@ -107,6 +107,8 @@
 
 #include <config.h>
 #include <stdlib.h>
+#include <inttypes.h>
+#include <sys/time.h>
 #include <libdrakvuf/libdrakvuf.h>
 
 /***************************************************************************/
@@ -116,21 +118,20 @@ struct filedelete_config
 {
     const char* rekall_profile;
     const char* dump_folder;
+    bool dump_modified_files;
 };
 struct socketmon_config
 {
     const char* rekall_profile;
     const char* tcpip_profile;
 };
+struct syscalls_config
+{
+    const char* rekall_profile;
+    const char* syscalls_filter_file;
+};
 
 /***************************************************************************/
-
-typedef enum
-{
-    OUTPUT_DEFAULT,
-    OUTPUT_CSV,
-    __OUTPUT_MAX
-} output_format_t;
 
 typedef enum drakvuf_plugin
 {
@@ -145,6 +146,7 @@ typedef enum drakvuf_plugin
     PLUGIN_CPUIDMON,
     PLUGIN_SOCKETMON,
     PLUGIN_REGMON,
+    PLUGIN_PROCMON,
     __DRAKVUF_PLUGIN_LIST_MAX
 } drakvuf_plugin_t;
 
@@ -161,6 +163,7 @@ static const char* drakvuf_plugin_names[] =
     [PLUGIN_CPUIDMON] = "cpuidmon",
     [PLUGIN_SOCKETMON] = "socketmon",
     [PLUGIN_REGMON] = "regmon",
+    [PLUGIN_PROCMON] = "procmon",
 };
 
 static const bool drakvuf_plugin_os_support[__DRAKVUF_PLUGIN_LIST_MAX][VMI_OS_WINDOWS+1] =
@@ -174,8 +177,9 @@ static const bool drakvuf_plugin_os_support[__DRAKVUF_PLUGIN_LIST_MAX][VMI_OS_WI
     [PLUGIN_SSDTMON]    = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
     [PLUGIN_DEBUGMON]   = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 1 },
     [PLUGIN_CPUIDMON]   = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 1 },
-    [PLUGIN_SOCKETMON]     = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
+    [PLUGIN_SOCKETMON]  = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
     [PLUGIN_REGMON]     = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
+    [PLUGIN_PROCMON]    = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
 };
 
 class plugin

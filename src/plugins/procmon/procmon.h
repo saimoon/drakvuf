@@ -102,18 +102,19 @@
  *                                                                         *
  ***************************************************************************/
 
-#ifndef REGMON_H
-#define REGMON_H
+#ifndef PROCMON_H
+#define PROCMON_H
 
+#include <glib.h>
 #include "plugins/private.h"
 #include "plugins/plugins.h"
 
-class regmon: public plugin
+class procmon: public plugin
 {
 public:
-    drakvuf_trap_t traps[14] =
+    drakvuf_trap_t traps[2] =
     {
-        [0 ... 13] = {
+        [0 ... 1] = {
             .breakpoint.lookup_type = LOOKUP_PID,
             .breakpoint.pid = 4,
             .breakpoint.addr_type = ADDR_RVA,
@@ -123,14 +124,17 @@ public:
         }
     };
 
+    GSList* result_traps;
+
     page_mode_t pm;
     output_format_t format;
 
-    addr_t objattr_name;
-    addr_t objattr_root;
+    addr_t command_line;
+    addr_t image_path_name;
+    addr_t object_header_body;
 
-    regmon(drakvuf_t drakvuf, const void* config, output_format_t output);
-    ~regmon();
+    procmon(drakvuf_t drakvuf, const void* config, output_format_t output);
+    ~procmon();
 };
 
 #endif

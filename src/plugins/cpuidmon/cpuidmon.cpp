@@ -129,15 +129,25 @@ event_response_t cpuid_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     switch (s->format)
     {
         case OUTPUT_CSV:
-            printf("cpuidmon,%" PRIu32 ",0x%" PRIx64 ",%s,%" PRIi64 "\n",
-                   info->vcpu, info->regs->cr3, info->proc_data.name, info->proc_data.userid);
+            printf("cpuidmon," FORMAT_TIMEVAL ",%" PRIu32 ",0x%" PRIx64 ",\"%s\",%" PRIi64 "\n",
+                   UNPACK_TIMEVAL(info->timestamp), info->vcpu, info->regs->cr3, info->proc_data.name, info->proc_data.userid);
             break;
+
+        case OUTPUT_KV:
+            printf("cpuidmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\","
+                   "Leaf=0x%" PRIx32 ",Subleaf=0x%" PRIx32","
+                   "RAX=0x%" PRIx64 ",RBX=0x%" PRIx64 ",RCX=0x%" PRIx64 ",RDX=0x%" PRIx64 "\n",
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
+                   info->cpuid->leaf, info->cpuid->subleaf,
+                   info->regs->rax, info->regs->rbx, info->regs->rcx, info->regs->rdx);
+            break;
+
         default:
         case OUTPUT_DEFAULT:
-            printf("[CPUIDMON] VCPU:%" PRIu32 " CR3:0x%" PRIx64 ",%s %s:%" PRIi64". "
+            printf("[CPUIDMON] TIME:" FORMAT_TIMEVAL " VCPU:%" PRIu32 " CR3:0x%" PRIx64 ",\"%s\" %s:%" PRIi64". "
                    "Leaf: 0x%" PRIx32 ". Subleaf: 0x%" PRIx32". "
                    "RAX: 0x%" PRIx64 " RBX: 0x%" PRIx64 " RCX: 0x%" PRIx64 " RDX: 0x%" PRIx64 "\n",
-                   info->vcpu, info->regs->cr3, info->proc_data.name,
+                   UNPACK_TIMEVAL(info->timestamp), info->vcpu, info->regs->cr3, info->proc_data.name,
                    USERIDSTR(drakvuf), info->proc_data.userid,
                    info->cpuid->leaf, info->cpuid->subleaf,
                    info->regs->rax, info->regs->rbx, info->regs->rcx, info->regs->rdx

@@ -146,6 +146,8 @@ int main(int argc, char** argv)
     bool verbose = 0;
     bool cpuid_stealth = 0;
     bool leave_paused = 0;
+    char const* syscalls_filter_file = NULL;
+    bool dump_modified_files = false;
 
     fprintf(stderr, "%s v%s\n", PACKAGE_NAME, PACKAGE_VERSION);
 
@@ -172,6 +174,7 @@ int main(int argc, char** argv)
                 "\t -w <process name>         Wait with plugin start until process name is detected\n"
 #ifdef ENABLE_PLUGIN_FILEDELETE
                 "\t -D <file dump folder>     Folder where extracted files should be stored at\n"
+                "\t -M                        Dump new or modified files also (requires -D)\n"
 #endif
 #ifdef ENABLE_PLUGIN_SOCKETMON
                 "\t -T <rekall profile>       The Rekall profile for tcpip.sys\n"
@@ -182,11 +185,14 @@ int main(int argc, char** argv)
 #ifdef DRAKVUF_DEBUG
                 "\t -v                        Turn on verbose (debug) output\n"
 #endif
+#ifdef ENABLE_PLUGIN_SYSCALLS
+                "\t -S <syscalls filter>      File with list of syscalls for trap in syscalls plugin (trap all if parameter is absent)\n"
+#endif
                );
         return rc;
     }
 
-    while ((c = getopt (argc, argv, "r:d:i:I:e:m:t:D:o:vx:spw:T:")) != -1)
+    while ((c = getopt (argc, argv, "r:d:i:I:e:m:t:D:o:vx:spw:T:S:M")) != -1)
         switch (c)
         {
             case 'r':
@@ -219,6 +225,8 @@ int main(int argc, char** argv)
             case 'o':
                 if (!strncmp(optarg,"csv",3))
                     output = OUTPUT_CSV;
+                if (!strncmp(optarg,"kv",2))
+                    output = OUTPUT_KV;
                 break;
             case 'x':
                 disable_plugin(optarg, plugin_list);
@@ -240,6 +248,12 @@ int main(int argc, char** argv)
                 verbose = 1;
                 break;
 #endif
+            case 'S':
+                syscalls_filter_file = optarg;
+                break;
+            case 'M':
+                dump_modified_files = true;
+                break;
             default:
                 fprintf(stderr, "Unrecognized option: %c\n", c);
                 return rc;
@@ -283,7 +297,7 @@ int main(int argc, char** argv)
     if ( injection_pid > 0 && inject_file )
     {
         PRINT_DEBUG("Starting injection with PID %i(%i) for %s\n", injection_pid, injection_thread, inject_file);
-        int ret = drakvuf->inject_cmd(injection_pid, injection_thread, inject_file, injection_method);
+        int ret = drakvuf->inject_cmd(injection_pid, injection_thread, inject_file, injection_method, output);
         if (!ret)
             goto exit;
     }
@@ -296,7 +310,7 @@ int main(int argc, char** argv)
 
     PRINT_DEBUG("Starting plugins\n");
 
-    if ( drakvuf->start_plugins(plugin_list, dump_folder, cpuid_stealth, tcpip) < 0 )
+    if ( drakvuf->start_plugins(plugin_list, dump_folder, dump_modified_files, cpuid_stealth, tcpip, syscalls_filter_file) < 0 )
         goto exit;
 
     PRINT_DEBUG("Beginning DRAKVUF loop\n");

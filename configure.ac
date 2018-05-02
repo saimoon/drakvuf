@@ -103,7 +103,7 @@
 #*************************************************************************#
 
 AC_PREREQ([2.60])
-AC_INIT([DRAKVUF], [0.5-m4_esyscmd_s([git describe --always])], [tamas@tklengyel.com], [], [https://drakvuf.com])
+AC_INIT([DRAKVUF], [0.6-m4_esyscmd_s([git describe --always])], [tamas@tklengyel.com], [], [https://drakvuf.com])
 AM_INIT_AUTOMAKE([1.10 no-define foreign subdir-objects])
 LT_INIT
 AC_CONFIG_HEADERS([config.h])
@@ -223,6 +223,16 @@ AC_ARG_ENABLE([plugin_regmon],
 AM_CONDITIONAL([PLUGIN_REGMON], [test x$plugin_regmon = xyes])
 if test x$plugin_regmon = xyes; then
   AC_DEFINE_UNQUOTED(ENABLE_PLUGIN_REGMON, 1, "")
+fi
+
+AC_ARG_ENABLE([plugin_procmon],
+  [AS_HELP_STRING([--disable-plugin-procmon],
+    [Enable the windows process lifecycle watching plugin @<:@yes@:>@])],
+  [plugin_procmon="$enableval"],
+  [plugin_procmon="yes"])
+AM_CONDITIONAL([PLUGIN_PROCMON], [test x$plugin_procmon = xyes])
+if test x$plugin_procmon = xyes; then
+  AC_DEFINE_UNQUOTED(ENABLE_PLUGIN_PROCMON, 1, "")
 fi
 
 #####################################################
@@ -392,4 +402,5 @@ CPUIDmon:   $plugin_cpuidmon
 Debugmon:   $plugin_debugmon
 Socketmon:  $plugin_socketmon
 Regmon:     $plugin_regmon
+Procmon:    $plugin_procmon
 -------------------------------------------------------------------------------])

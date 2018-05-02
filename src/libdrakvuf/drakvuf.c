@@ -468,3 +468,55 @@ os_t drakvuf_get_os_type(drakvuf_t drakvuf)
 {
     return drakvuf->os;
 }
+
+static unicode_string_t* drakvuf_read_unicode_common(vmi_instance_t vmi, const access_context_t* ctx)
+{
+    unicode_string_t* us = vmi_read_unicode_str(vmi, ctx);
+    if ( !us )
+        return NULL;
+
+    unicode_string_t* out = (unicode_string_t*)g_malloc0(sizeof(unicode_string_t));
+
+    if ( !out )
+    {
+        vmi_free_unicode_str(us);
+        return NULL;
+    }
+
+    status_t rc = vmi_convert_str_encoding(us, out, "UTF-8");
+    vmi_free_unicode_str(us);
+
+    if (VMI_SUCCESS == rc)
+        return out;
+
+    g_free(out);
+    return NULL;
+}
+
+unicode_string_t* drakvuf_read_unicode(drakvuf_t drakvuf, drakvuf_trap_info_t* info, addr_t addr)
+{
+    if ( !addr )
+        return NULL;
+
+    vmi_instance_t vmi = drakvuf->vmi;
+    access_context_t ctx =
+    {
+        .addr = addr,
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    return drakvuf_read_unicode_common(vmi, &ctx);
+}
+
+unicode_string_t* drakvuf_read_unicode_va(vmi_instance_t vmi, addr_t vaddr, vmi_pid_t pid)
+{
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_PID,
+        .addr = vaddr,
+        .pid = pid
+    };
+
+    return drakvuf_read_unicode_common(vmi, &ctx);
+}
