@@ -116,7 +116,7 @@ RUNFOLDER=$5
 RUNFILE=$6
 OUTPUTFOLDER=$7
 MD5=$(md5sum $RUNFOLDER/$RUNFILE | awk -F" " '{print $1}')
-CMD="C:\\Users\\Athos\\Desktop\\test.exe"
+CMD="c:\\windows\\system32\\WindowsPowerShell\\v1.0\\powershell.exe -command Start-Process C:\\Users\\Athos\\Desktop\\test.exe -Verb runAs"
 
 drakvuf -r $REKALL -d $DOMAIN -i $PID -e "$CMD" -D $OUTPUTFOLDER/$MD5 -o csv -t 60 1>$OUTPUTFOLDER/$MD5/drakvuf.log 2>&1
 

@@ -117,10 +117,17 @@ RUNFILE=$6
 OUTPUTFOLDER=$7
 MD5=$(md5sum $RUNFOLDER/$RUNFILE | awk -F" " '{print $1}')
 USER="Athos"
-NETWORK_CARD_NAME="Ethernet"
-CMD="c:\\windows\system32\\cmd.exe /c \"netsh interface ip set address name=\\\"$NETWORK_CARD_NAME\\\" static 192.168.$VLAN.2 255.255.255.0 192.168.$VLAN.1 && netsh interface ip set dns name=\\\"$NETWORK_CARD_NAME\\\" static 192.168.$VLAN.1 validate=no && c:\\windows\system32\\ping.exe -n 5 192.168.$VLAN.1 && powershell (new-object System.Net.WebClient).Downloadfile('http://192.168.$VLAN.1/$RUNFILE', 'C:\\Users\\$USER\\Desktop\\test.exe')\""
+CMD="c:\\\\windows\\\\system32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe -command (new-object System.Net.WebClient).Downloadfile('http://192.168.$VLAN.1/$RUNFILE', 'C:\Users\Athos\Desktop\test.exe')"
+
+xl unpause $DOMAIN
+
+sleep 10
 
 mkdir -p $OUTPUTFOLDER/$MD5 1>/dev/null 2>&1
+xl list 1>$OUTPUTFOLDER/$MD5/xl.log 2>&1
+
 injector $REKALL $DOMAIN $PID "$CMD" 1>$OUTPUTFOLDER/$MD5/preconfig.log 2>&1
+
+sleep 10
 
 exit $?;
