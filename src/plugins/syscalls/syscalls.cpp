@@ -267,9 +267,9 @@ static void print_json_arg(syscalls* s, drakvuf_t drakvuf, drakvuf_trap_info_t* 
     }
 
     if ( 4 == s->reg_size )
-        printf(",\"%s\":0x%" PRIx32, arg.name, static_cast<uint32_t>(val));
+        printf(",\"%s\":%" PRId32, arg.name, static_cast<uint32_t>(val));
     else
-        printf(",\"%s\":0x%" PRIx64, arg.name, static_cast<uint64_t>(val));
+        printf(",\"%s\":%" PRId64, arg.name, static_cast<uint64_t>(val));
 }
 
 static void print_default_arg(syscalls* s, drakvuf_t drakvuf, drakvuf_trap_info_t* info, const win_arg_t& arg, addr_t val, const unicode_string_t* us)

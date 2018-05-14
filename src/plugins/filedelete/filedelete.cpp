@@ -382,6 +382,12 @@ static void grab_file_by_handle(filedelete* f, drakvuf_t drakvuf,
                        UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
                        info->trap->name, filename_us->contents);
                 break;
+            case OUTPUT_JSON:
+                printf("{ \"filedelete\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
+                       "\"Method\":\"%s\",\"FileName\":\"%s\" } }\n",
+                       UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
+                       info->trap->name, filename_us->contents);
+                break;
             default:
             case OUTPUT_DEFAULT:
                 printf("[FILEDELETE] TIME:" FORMAT_TIMEVAL " VCPU:%" PRIu32 " CR3:0x%" PRIx64 ",\"%s\" %s:%" PRIi64" \"%s\"\n",

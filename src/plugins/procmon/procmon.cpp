@@ -162,6 +162,13 @@ static void print_process_creation_result(
                    info->trap->name, status, new_pid, cmdline, imagepath);
             break;
 
+        case OUTPUT_JSON:
+            printf("{ \"procmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
+                   "\"Method\":\"%s\",\"Status\":%" PRId64 ",\"NewPid\":%d,\"CommandLine\":\"%s\",\"ImagePathName\":\"%s\" } }\n",
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
+                   info->trap->name, status, new_pid, cmdline, imagepath);
+            break;
+
         default:
         case OUTPUT_DEFAULT:
             printf("[PROCMON] TIME:" FORMAT_TIMEVAL " VCPU:%" PRIu32 " CR3:0x%" PRIx64 ", EPROCESS:0x%" PRIx64
@@ -376,6 +383,13 @@ static event_response_t terminate_process_hook(
         case OUTPUT_KV:
             printf("procmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\","
                    "Method=%s,ExitPid=%d,ExitStatus=0x%" PRIx64 "\n",
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
+                   info->trap->name, exit_pid, exit_status);
+            break;
+
+        case OUTPUT_JSON:
+            printf("{ \"procmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
+                   "\"Method\":\"%s\",\"ExitPid\":%d,\"ExitStatus\":%" PRId64 " } }\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
                    info->trap->name, exit_pid, exit_status);
             break;

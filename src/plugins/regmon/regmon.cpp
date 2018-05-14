@@ -147,6 +147,16 @@ static event_response_t log_reg_hook( drakvuf_t drakvuf, drakvuf_trap_info_t* in
                     printf("\n");
                     break;
 
+                case OUTPUT_JSON:
+                    printf("{ \"regmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
+                           "\"Method\":\"%s\",\"Key\":\"%s\"",
+                           UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
+                           info->trap->name, key_path);
+                    if (with_value_name)
+                        printf(",\"ValueName\":\"%s\"", value_name);
+                    printf(" } }\n");
+                    break;
+
                 default:
                 case OUTPUT_DEFAULT:
                     printf("[REGMON] TIME:" FORMAT_TIMEVAL " VCPU:%" PRIu32 " CR3:0x%" PRIx64 ", EPROCESS:0x%" PRIx64 ", PID:%d, PPID:%d, \"%s\" %s:%" PRIi64 " %s:%s",
@@ -229,6 +239,13 @@ static event_response_t log_reg_objattr_hook(drakvuf_t drakvuf, drakvuf_trap_inf
 
             case OUTPUT_KV:
                 printf("regmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",Method=%s,Key=\"%s%s%s\"\n",
+                       UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
+                       info->trap->name, key_root, key_sep, key_name );
+                break;
+
+            case OUTPUT_JSON:
+                printf("{ \"regmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
+                       "\"Method\":\"%s\",\"Key\":\"%s%s%s\" } }\n",
                        UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
                        info->trap->name, key_root, key_sep, key_name );
                 break;

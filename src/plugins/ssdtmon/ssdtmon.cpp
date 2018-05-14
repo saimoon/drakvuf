@@ -142,6 +142,12 @@ event_response_t write_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
                        UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name, table_index);
                 break;
 
+            case OUTPUT_JSON:
+                printf("{ \"ssdtmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
+                       "\"TableIndex\":%" PRIi64 " } }\n",
+                       UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name, table_index);
+                break;
+
             default:
             case OUTPUT_DEFAULT:
                 printf("[SSDTMON] TIME:" FORMAT_TIMEVAL " VCPU:%" PRIu32 " CR3:0x%" PRIx64 ",\"%s\" %s:%" PRIi64" Table index:%" PRIi64 "\n",

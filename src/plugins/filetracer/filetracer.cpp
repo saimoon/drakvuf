@@ -248,6 +248,13 @@ static event_response_t objattr_read(drakvuf_t drakvuf, drakvuf_trap_info_t* inf
                    syscall_name, file_root, file_sep, file_name);
             break;
 
+        case OUTPUT_JSON:
+            printf("{ \"filetracer\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
+                   "\"Method\":\"%s\",\"File\":\"%s%s%s\" } }\n",
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
+                   syscall_name, file_root, file_sep, file_name);
+            break;
+
         default:
         case OUTPUT_DEFAULT:
             printf("[FILETRACER] TIME:" FORMAT_TIMEVAL " VCPU:%" PRIu32 " CR3:0x%" PRIx64 ",\"%s\" %s:%" PRIi64 " %s,%s%s%s\n",
@@ -345,6 +352,13 @@ static void print_rename_file_info(vmi_instance_t vmi, drakvuf_t drakvuf, drakvu
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
                    syscall_name, operation_name,
                    src_file_us->contents, dst_file_p);
+            break;
+
+        case OUTPUT_JSON:
+            printf("{ \"filetracer\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
+                   "\"Method\":\"%s\",\"Operation\":\"%s\",\"FileSrc\":\"%s\",\"FileDst\":\"%s\" } }\n",
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
+                   syscall_name, operation_name, src_file_us->contents, dst_file_p);
             break;
 
         default:
