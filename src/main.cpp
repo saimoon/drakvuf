@@ -168,7 +168,7 @@ int main(int argc, char** argv)
                 "\t -e <inject_file>          The executable to start with injection\n"
                 "\t -m <inject_method>        The injection method (default or shellexec for Windows amd64 only)\n"
                 "\t -t <timeout>              Timeout (in seconds)\n"
-                "\t -o <format>               Output format (default or csv)\n"
+                "\t -o <format>               Output format (default or csv/kv/json)\n"
                 "\t -x <plugin>               Don't activate the specified plugin\n"
                 "\t -p                        Leave domain paused after DRAKVUF exits\n"
                 "\t -w <process name>         Wait with plugin start until process name is detected\n"
@@ -227,6 +227,8 @@ int main(int argc, char** argv)
                     output = OUTPUT_CSV;
                 if (!strncmp(optarg,"kv",2))
                     output = OUTPUT_KV;
+                if (!strncmp(optarg,"json",4))
+                    output = OUTPUT_JSON;
                 break;
             case 'x':
                 disable_plugin(optarg, plugin_list);
