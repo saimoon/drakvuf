@@ -358,7 +358,7 @@ static void print_rename_file_info(vmi_instance_t vmi, drakvuf_t drakvuf, drakvu
             printf("{ \"filetracer\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
                    "\"Method\":\"%s\",\"Operation\":\"%s\",\"FileSrc\":\"%s\",\"FileDst\":\"%s\" } }\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name,NULL),
-                   g_strescape(syscall_name,NULL), g_strescape(operation_name,NULL), g_strescape(src_file_us->contents,NULL), g_strescape(dst_file_p,NULL));
+                   g_strescape(syscall_name,NULL), g_strescape(operation_name,NULL), src_file_us->contents, g_strescape(dst_file_p,NULL));
             break;
 
         default:

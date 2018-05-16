@@ -262,7 +262,7 @@ static void print_json_arg(syscalls* s, drakvuf_t drakvuf, drakvuf_trap_info_t* 
 {
     if ( us )
     {
-        printf(",\"%s\":\"%s\"", g_strescape(arg.name,NULL), g_strescape(us->contents,NULL));
+        printf(",\"%s\":\"%s\"", g_strescape(arg.name,NULL), us->contents);
         return;
     }
 
