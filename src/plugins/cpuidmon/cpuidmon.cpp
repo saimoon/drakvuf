@@ -146,7 +146,7 @@ event_response_t cpuid_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             printf("{ \"cpuidmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
                    "\"Leaf\":%" PRId32 ",\"Subleaf\":%" PRId32 ","
                    "\"RAX\":%" PRId64 ",\"RBX\":%" PRId64 ",\"RCX\":%" PRId64 ",\"RDX\":%" PRIx64 " } }\n",
-                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name,NULL),
                    info->cpuid->leaf, info->cpuid->subleaf, info->regs->rax, info->regs->rbx, info->regs->rcx, info->regs->rdx);
             break;
 

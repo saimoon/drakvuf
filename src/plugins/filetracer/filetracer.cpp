@@ -251,8 +251,8 @@ static event_response_t objattr_read(drakvuf_t drakvuf, drakvuf_trap_info_t* inf
         case OUTPUT_JSON:
             printf("{ \"filetracer\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
                    "\"Method\":\"%s\",\"File\":\"%s%s%s\" } }\n",
-                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                   syscall_name, file_root, file_sep, file_name);
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name,NULL),
+                   g_strescape(syscall_name,NULL), g_strescape(file_root,NULL), g_strescape(file_sep,NULL), g_strescape(file_name,NULL));
             break;
 
         default:
@@ -357,8 +357,8 @@ static void print_rename_file_info(vmi_instance_t vmi, drakvuf_t drakvuf, drakvu
         case OUTPUT_JSON:
             printf("{ \"filetracer\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
                    "\"Method\":\"%s\",\"Operation\":\"%s\",\"FileSrc\":\"%s\",\"FileDst\":\"%s\" } }\n",
-                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                   syscall_name, operation_name, src_file_us->contents, dst_file_p);
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name,NULL),
+                   g_strescape(syscall_name,NULL), g_strescape(operation_name,NULL), g_strescape(src_file_us->contents,NULL), g_strescape(dst_file_p,NULL));
             break;
 
         default:

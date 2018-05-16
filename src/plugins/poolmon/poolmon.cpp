@@ -197,10 +197,10 @@ static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         case OUTPUT_JSON:
             printf("{ \"poolmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
                    "\"Tag\":\"%s\",\"Type\":\"%s\",\"Size\":%" PRIu64,
-                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                   tag, pool_type_str, size);
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name,NULL),
+                   g_strescape(tag,NULL), g_strescape(pool_type_str,NULL), size);
             if (s)
-                printf(",\"Source\":\"%s\",\"Description\":\"%s\"", s->source, s->description);
+                printf(",\"Source\":\"%s\",\"Description\":\"%s\"", g_strescape(s->source,NULL), g_strescape(s->description,NULL));
 
             printf(" } }\n");
             break;

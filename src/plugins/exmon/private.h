@@ -110,6 +110,9 @@
 #define KV_FORMAT32 "exmon Time=" FORMAT_TIMEVAL ",RSP=%x,ExceptionRecord=0x%x,ExceptionCode=0x%x,FirstChance=%d,EIP=%x,EAX=%x,EBX=%x,ECX=%x,EDX=%x,EDI=%x,ESI=%x,EBP=%x,ESP=%x"
 #define KV_FORMAT64 "exmon Time=" FORMAT_TIMEVAL ",ExceptionRecord=0x%x,ExceptionCode=0x%x,FirstChance=%d,RIP=%x,RAX=%x,RBX=%x,RCX=%x,RDX=%x,RSP=%x,RBP=%x,RSI=%x,RDI=%x,R8=%x,R9=%x,R10=%x,R11=%x"
 
+#define JSON_FORMAT32 "{ \"exmon\": { \"Time\":" FORMAT_TIMEVAL ",\"RSP\":%d,\"ExceptionRecord\":%d,\"ExceptionCode\":%d,\"FirstChance\":%d,\"EIP\":%d,\"EAX\":%d,\"EBX\":%d,\"ECX\":%d,\"EDX\":%d,\"EDI\":%d,\"ESI\":%d,\"EBP\":%d,\"ESP\":%d"
+#define JSON_FORMAT64 "{ \"exmon\": { \"Time\":" FORMAT_TIMEVAL ",\"ExceptionRecord\":%d,\"ExceptionCode\":%d,\"FirstChance\":%d,\"RIP\":%d,\"RAX\":%d,\"RBX\":%d,\"RCX\":%d,\"RDX\":%d,\"RSP\":%d,\"RBP\":%d,\"RSI\":%d,\"RDI\":%d,\"R8\":%d,\"R9\":%d,\"R10\":%d,\"R11\":%d"
+
 #define CSV_FORMAT32 "exmon," FORMAT_TIMEVAL ",%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x"
 #define CSV_FORMAT64 "exmon," FORMAT_TIMEVAL ",%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x"
 
@@ -119,6 +122,8 @@
 #define CSV_FORMAT_USER ",%d,%d,%s\n"
 
 #define KV_FORMAT_USER ",PID=%d,PPID=%d,Name=\"%s\"\n"
+
+#define JSON_FORMAT_USER ",\"PID\":%d,\"PPID\":%d,\"Name\":\"%s\" } }\n"
 
 #define DEFAULT_FORMAT_USER " PID: %d PPID: %d NAME: %s\n"
 

@@ -150,10 +150,10 @@ static event_response_t log_reg_hook( drakvuf_t drakvuf, drakvuf_trap_info_t* in
                 case OUTPUT_JSON:
                     printf("{ \"regmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
                            "\"Method\":\"%s\",\"Key\":\"%s\"",
-                           UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                           info->trap->name, key_path);
+                           UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name,NULL),
+                           g_strescape(info->trap->name,NULL), g_strescape(key_path,NULL));
                     if (with_value_name)
-                        printf(",\"ValueName\":\"%s\"", value_name);
+                        printf(",\"ValueName\":\"%s\"", g_strescape(value_name,NULL));
                     printf(" } }\n");
                     break;
 
@@ -246,8 +246,8 @@ static event_response_t log_reg_objattr_hook(drakvuf_t drakvuf, drakvuf_trap_inf
             case OUTPUT_JSON:
                 printf("{ \"regmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
                        "\"Method\":\"%s\",\"Key\":\"%s%s%s\" } }\n",
-                       UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                       info->trap->name, key_root, key_sep, key_name );
+                       UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name,NULL),
+                       g_strescape(info->trap->name,NULL), g_strescape(key_root,NULL), g_strescape(key_sep,NULL), g_strescape(key_name,NULL) );
                 break;
 
             default:

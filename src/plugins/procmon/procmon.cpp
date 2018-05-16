@@ -165,8 +165,8 @@ static void print_process_creation_result(
         case OUTPUT_JSON:
             printf("{ \"procmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
                    "\"Method\":\"%s\",\"Status\":%" PRId64 ",\"NewPid\":%d,\"CommandLine\":\"%s\",\"ImagePathName\":\"%s\" } }\n",
-                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                   info->trap->name, status, new_pid, cmdline, imagepath);
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name,NULL),
+                   g_strescape(info->trap->name,NULL), status, new_pid, g_strescape(cmdline,NULL), g_strescape(imagepath,NULL));
             break;
 
         default:
@@ -390,8 +390,8 @@ static event_response_t terminate_process_hook(
         case OUTPUT_JSON:
             printf("{ \"procmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
                    "\"Method\":\"%s\",\"ExitPid\":%d,\"ExitStatus\":%" PRId64 " } }\n",
-                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                   info->trap->name, exit_pid, exit_status);
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name,NULL),
+                   g_strescape(info->trap->name,NULL), exit_pid, exit_status);
             break;
 
         default:

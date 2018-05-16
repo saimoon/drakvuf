@@ -279,8 +279,8 @@ static event_response_t udpa_x86_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
                    "\"UserId\":%" PRIi64 ",\"Owner\":\"%s\",\"OwnerId\":%" PRIi64 ",\"Protocol\":\"%s\",\"LocalIp\":\"%s\","
                    "\"LocalPort\":%" PRIu16 " } }\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
-                   info->proc_data.name, info->proc_data.userid,
-                   owner, ownerid,
+                   g_strescape(info->proc_data.name,NULL), info->proc_data.userid,
+                   g_strescape(owner,NULL), ownerid,
                    (inetaf.addressfamily == AF_INET) ? "UDPv4" : "UDPv6",
                    lip, udpa.port);
             break;
@@ -405,8 +405,8 @@ static event_response_t udpa_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
                    "\"UserId\":%" PRIi64 ",\"Owner\":\"%s\",\"OwnerId\":%" PRIi64 ",\"Protocol\":\"%s\",\"LocalIp\":\"%s\","
                    "\"LocalPort\":%" PRIu16 " } }\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
-                   info->proc_data.name, info->proc_data.userid,
-                   owner, ownerid,
+                   g_strescape(info->proc_data.name,NULL), info->proc_data.userid,
+                   g_strescape(owner,NULL), ownerid,
                    (inetaf.addressfamily == AF_INET) ? "UDPv4" : "UDPv6",
                    lip, udpa.port);
             break;
@@ -533,8 +533,8 @@ static event_response_t udpa_win10_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_in
                    "\"UserId\":%" PRIi64 ",\"Owner\":\"%s\",\"OwnerId\":%" PRIi64 ",\"Protocol\":\"%s\",\"LocalIp\":\"%s\","
                    "\"LocalPort\":%" PRIu16 " } }\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
-                   info->proc_data.name, info->proc_data.userid,
-                   owner, ownerid,
+                   g_strescape(info->proc_data.name,NULL), info->proc_data.userid,
+                   g_strescape(owner,NULL), ownerid,
                    (inetaf.addressfamily == AF_INET) ? "UDPv4" : "UDPv6",
                    lip, udpa.port);
             break;
@@ -690,10 +690,10 @@ static event_response_t tcpe_x86_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info
                    "\"UserId\":%" PRIi64 ",\"Owner\":\"%s\",\"OwnerId\":%" PRIi64 ",\"Protocol\":\"%s\",\"TcpState\":\"%s\",\"LocalIp\":\"%s\","
                    "\"LocalPort\":%" PRIu16 ",\"RemoteIp\":\"%s\",\"RemotePort\":%" PRIu16 " } }\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
-                   info->proc_data.name, info->proc_data.userid,
-                   owner,ownerid,
+                   g_strescape(info->proc_data.name,NULL), info->proc_data.userid,
+                   g_strescape(owner,NULL),ownerid,
                    (inetaf.addressfamily == AF_INET) ? "TCPv4" : "TCPv6",
-                   tcp_state_str[tcpe.state],
+                   g_strescape(tcp_state_str[tcpe.state],NULL),
                    lip, tcpe.localport, rip, tcpe.remoteport);
             break;
 
@@ -830,10 +830,10 @@ static event_response_t tcpe_x64_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info
                    "\"UserId\":%" PRIi64 ",\"Owner\":\"%s\",\"OwnerId\":%" PRIi64 ",\"Protocol\":\"%s\",\"TcpState\":\"%s\",\"LocalIp\":\"%s\","
                    "\"LocalPort\":%" PRIu16 ",\"RemoteIp\":\"%s\",\"RemotePort\":%" PRIu16 " } }\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
-                   info->proc_data.name, info->proc_data.userid,
-                   owner,ownerid,
+                   g_strescape(info->proc_data.name,NULL), info->proc_data.userid,
+                   g_strescape(owner,NULL),ownerid,
                    (inetaf.addressfamily == AF_INET) ? "TCPv4" : "TCPv6",
-                   tcp_state_str[tcpe.state],
+                   g_strescape(tcp_state_str[tcpe.state],NULL),
                    lip, tcpe.localport, rip, tcpe.remoteport);
             break;
 
@@ -971,10 +971,10 @@ static event_response_t tcpe_win10_x64_cb(drakvuf_t drakvuf, drakvuf_trap_info_t
                    "\"UserId\":%" PRIi64 ",\"Owner\":\"%s\",\"OwnerId\":%" PRIi64 ",\"Protocol\":\"%s\",\"TcpState\":\"%s\",\"LocalIp\":\"%s\","
                    "\"LocalPort\":%" PRIu16 ",\"RemoteIp\":\"%s\",\"RemotePort\":%" PRIu16 " } }\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
-                   info->proc_data.name, info->proc_data.userid,
-                   owner,ownerid,
+                   g_strescape(info->proc_data.name,NULL), info->proc_data.userid,
+                   g_strescape(owner,NULL),ownerid,
                    (inetaf.addressfamily == AF_INET) ? "TCPv4" : "TCPv6",
-                   tcp_state_str[tcpe.state],
+                   g_strescape(tcp_state_str[tcpe.state],NULL),
                    lip, tcpe.localport, rip, tcpe.remoteport);
             break;
 
@@ -1109,8 +1109,8 @@ static event_response_t tcpl_x86_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
                    "\"UserId\":%" PRIi64 ",\"Owner\":\"%s\",\"OwnerId\":%" PRIi64 ",\"Protocol\":\"%s\",\"Listener\":1,\"LocalIp\":\"%s\","
                    "\"LocalPort\":%" PRIu16 " } }\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
-                   info->proc_data.name, info->proc_data.userid,
-                   owner, ownerid,
+                   g_strescape(info->proc_data.name,NULL), info->proc_data.userid,
+                   g_strescape(owner,NULL), ownerid,
                    (inetaf.addressfamily == AF_INET) ? "TCPv4" : "TCPv6",
                    lip, tcpl.port);
             break;
@@ -1236,8 +1236,8 @@ static event_response_t tcpl_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
                    "\"UserId\":%" PRIi64 ",\"Owner\":\"%s\",\"OwnerId\":%" PRIi64 ",\"Protocol\":\"%s\",\"Listener\":1,\"LocalIp\":\"%s\","
                    "\"LocalPort\":%" PRIu16 " } }\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
-                   info->proc_data.name, info->proc_data.userid,
-                   owner, ownerid,
+                   g_strescape(info->proc_data.name,NULL), info->proc_data.userid,
+                   g_strescape(owner,NULL), ownerid,
                    (inetaf.addressfamily == AF_INET) ? "TCPv4" : "TCPv6",
                    lip, tcpl.port);
             break;
@@ -1363,8 +1363,8 @@ static event_response_t tcpl_win10_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_in
                    "\"UserId\":%" PRIi64 ",\"Owner\":\"%s\",\"OwnerId\":%" PRIi64 ",\"Protocol\":\"%s\",\"Listener\":1,\"LocalIp\":\"%s\","
                    "\"LocalPort\":%" PRIu16 " } }\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
-                   info->proc_data.name, info->proc_data.userid,
-                   owner, ownerid,
+                   g_strescape(info->proc_data.name,NULL), info->proc_data.userid,
+                   g_strescape(owner,NULL), ownerid,
                    (inetaf.addressfamily == AF_INET) ? "TCPv4" : "TCPv6",
                    lip, tcpl.port);
             break;

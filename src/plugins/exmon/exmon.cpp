@@ -177,12 +177,26 @@ static void print_program_info(uint8_t previous_mode, char const* user_format, d
     }
 }
 
+static void print_program_info_json(uint8_t previous_mode, char const* user_format, drakvuf_trap_info_t* info)
+{
+    if (previous_mode == 1)
+    {
+        if (info->proc_data.base_addr)
+        {
+            printf(user_format, info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name,NULL));
+        }
+        else printf(user_format, 0, 0, "NOPROC");
+    }
+    else
+    {
+        printf(" } }\n");
+    }
+}
+
 static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 {
     exmon* e = (exmon*)info->trap->data;
     vmi_instance_t vmi = drakvuf_lock_and_get_vmi(drakvuf);
-    const char* str_format;
-    const char* user_format;
     uint32_t first_chance;
     char* trap_frame=(char*)g_malloc0(e->ktrap_frame_size);  // Generic pointer that allows addressing byte-aligned offests
 
@@ -229,37 +243,84 @@ static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         switch (e->format)
         {
             case OUTPUT_CSV:
-                str_format=CSV_FORMAT32;
-                user_format=CSV_FORMAT_USER;
+                printf(CSV_FORMAT32,
+                       UNPACK_TIMEVAL(info->timestamp),
+                       (uint32_t)info->regs->rsp,
+                       (uint32_t)exception_record,
+                       (uint32_t)exception_code,
+                       (uint32_t)first_chance,
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EIP]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EAX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EBX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_ECX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EDX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EDI]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_ESI]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EBP]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_HWESP]));
+
+                print_program_info(previous_mode, CSV_FORMAT_USER, info);
                 break;
             case OUTPUT_KV:
-                str_format=KV_FORMAT32;
-                user_format=KV_FORMAT_USER;
+                printf(KV_FORMAT32,
+                       UNPACK_TIMEVAL(info->timestamp),
+                       (uint32_t)info->regs->rsp,
+                       (uint32_t)exception_record,
+                       (uint32_t)exception_code,
+                       (uint32_t)first_chance,
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EIP]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EAX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EBX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_ECX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EDX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EDI]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_ESI]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EBP]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_HWESP]));
+
+                print_program_info(previous_mode, KV_FORMAT_USER, info);
+                break;
+            case OUTPUT_JSON:
+                printf(JSON_FORMAT32,
+                       UNPACK_TIMEVAL(info->timestamp),
+                       (uint32_t)info->regs->rsp,
+                       (uint32_t)exception_record,
+                       (uint32_t)exception_code,
+                       (uint32_t)first_chance,
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EIP]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EAX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EBX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_ECX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EDX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EDI]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_ESI]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EBP]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_HWESP]));
+
+                print_program_info_json(previous_mode, JSON_FORMAT_USER, info);
                 break;
             default:
             case OUTPUT_DEFAULT:
-                str_format=DEFAULT_FORMAT32;
-                user_format=DEFAULT_FORMAT_USER;
+                printf(DEFAULT_FORMAT32,
+                       UNPACK_TIMEVAL(info->timestamp),
+                       (uint32_t)info->regs->rsp,
+                       (uint32_t)exception_record,
+                       (uint32_t)exception_code,
+                       (uint32_t)first_chance,
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EIP]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EAX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EBX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_ECX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EDX]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EDI]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_ESI]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EBP]),
+                       *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_HWESP]));
+
+                print_program_info(previous_mode, DEFAULT_FORMAT_USER, info);
                 break;
         }
 
-        printf(str_format,
-               UNPACK_TIMEVAL(info->timestamp),
-               (uint32_t)info->regs->rsp,
-               (uint32_t)exception_record,
-               (uint32_t)exception_code,
-               (uint32_t)first_chance,
-               *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EIP]),
-               *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EAX]),
-               *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EBX]),
-               *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_ECX]),
-               *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EDX]),
-               *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EDI]),
-               *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_ESI]),
-               *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_EBP]),
-               *(uint32_t*)(trap_frame+e->offsets[KTRAP_FRAME_HWESP]));
-
-        print_program_info(previous_mode, user_format, info);
     }
     else
     {
@@ -280,37 +341,87 @@ static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         switch (e->format)
         {
             case OUTPUT_CSV:
-                str_format=CSV_FORMAT64;
-                user_format=CSV_FORMAT_USER;
+                printf(CSV_FORMAT64,
+                       UNPACK_TIMEVAL(info->timestamp),
+                       info->regs->rcx, exception_code, first_chance & 1,
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RIP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RAX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RBX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RCX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RDX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RSP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RBP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RSI]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RDI]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R8]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R9]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R10]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R11]));
+
+                print_program_info((uint8_t)(info->regs->r9), CSV_FORMAT_USER, info);
                 break;
             case OUTPUT_KV:
-                str_format=KV_FORMAT64;
-                user_format=KV_FORMAT_USER;
+                printf(KV_FORMAT64,
+                       UNPACK_TIMEVAL(info->timestamp),
+                       info->regs->rcx, exception_code, first_chance & 1,
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RIP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RAX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RBX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RCX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RDX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RSP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RBP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RSI]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RDI]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R8]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R9]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R10]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R11]));
+
+                print_program_info((uint8_t)(info->regs->r9), KV_FORMAT_USER, info);
+                break;
+            case OUTPUT_JSON:
+                printf(JSON_FORMAT64,
+                       UNPACK_TIMEVAL(info->timestamp),
+                       info->regs->rcx, exception_code, first_chance & 1,
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RIP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RAX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RBX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RCX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RDX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RSP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RBP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RSI]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RDI]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R8]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R9]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R10]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R11]));
+
+                print_program_info_json((uint8_t)(info->regs->r9), JSON_FORMAT_USER, info);
                 break;
             default:
             case OUTPUT_DEFAULT:
-                str_format=DEFAULT_FORMAT64;
-                user_format=DEFAULT_FORMAT_USER;
+                printf(DEFAULT_FORMAT64,
+                       UNPACK_TIMEVAL(info->timestamp),
+                       info->regs->rcx, exception_code, first_chance & 1,
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RIP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RAX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RBX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RCX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RDX]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RSP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RBP]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RSI]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RDI]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R8]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R9]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R10]),
+                       *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R11]));
+
+                print_program_info((uint8_t)(info->regs->r9), DEFAULT_FORMAT_USER, info);
                 break;
         }
-        printf(str_format,
-               UNPACK_TIMEVAL(info->timestamp),
-               info->regs->rcx, exception_code, first_chance & 1,
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RIP]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RAX]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RBX]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RCX]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RDX]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RSP]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RBP]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RSI]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_RDI]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R8]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R9]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R10]),
-               *(uint64_t*)(trap_frame+e->offsets[KTRAP_FRAME_R11]));
-
-        print_program_info((uint8_t)(info->regs->r9), user_format, info);
     }
 
 done:

@@ -128,7 +128,7 @@ static event_response_t linux_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             break;
         case OUTPUT_JSON:
             printf("{ \"syscall\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\",\"Method\":\"%s\" } }\n",
-                   UNPACK_TIMEVAL(t), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name, NULL), info->trap->name);
+                   UNPACK_TIMEVAL(t), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name, NULL), g_strescape(info->trap->name, NULL));
             break;
         default:
         case OUTPUT_DEFAULT:
@@ -197,7 +197,7 @@ static void print_header(output_format_t format, drakvuf_t drakvuf, const drakvu
         case OUTPUT_JSON:
             printf("{ \"syscall\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\",\"Method\":\"%s\"",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name, NULL),
-                   info->trap->name);
+                   g_strescape(info->trap->name, NULL));
             break;
         default:
         case OUTPUT_DEFAULT:
@@ -262,14 +262,14 @@ static void print_json_arg(syscalls* s, drakvuf_t drakvuf, drakvuf_trap_info_t* 
 {
     if ( us )
     {
-        printf(",\"%s\":\"%s\"", arg.name, us->contents);
+        printf(",\"%s\":\"%s\"", g_strescape(arg.name,NULL), g_strescape(us->contents,NULL));
         return;
     }
 
     if ( 4 == s->reg_size )
-        printf(",\"%s\":%" PRId32, arg.name, static_cast<uint32_t>(val));
+        printf(",\"%s\":%" PRId32, g_strescape(arg.name,NULL), static_cast<uint32_t>(val));
     else
-        printf(",\"%s\":%" PRId64, arg.name, static_cast<uint64_t>(val));
+        printf(",\"%s\":%" PRId64, g_strescape(arg.name,NULL), static_cast<uint64_t>(val));
 }
 
 static void print_default_arg(syscalls* s, drakvuf_t drakvuf, drakvuf_trap_info_t* info, const win_arg_t& arg, addr_t val, const unicode_string_t* us)

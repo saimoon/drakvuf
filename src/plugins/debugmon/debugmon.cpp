@@ -161,8 +161,8 @@ event_response_t debug_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
         case OUTPUT_JSON:
             printf("{ \"debugmon\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\","
                    "\"RIP\":%" PRId64",\"DebugType\":%" PRIi32 ",\"DebugTypeStr\":\"%s\" } }\n",
-                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                   info->regs->rip, info->debug->type, debug_type[info->debug->type]);
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name,NULL),
+                   info->regs->rip, info->debug->type, g_strescape(debug_type[info->debug->type],NULL));
             break;
 
         default:
