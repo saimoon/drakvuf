@@ -128,7 +128,7 @@ static event_response_t linux_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             break;
         case OUTPUT_JSON:
             printf("{ \"syscall\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\",\"Method\":\"%s\" } }\n",
-                   UNPACK_TIMEVAL(t), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name, info->trap->name);
+                   UNPACK_TIMEVAL(t), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name, NULL), info->trap->name);
             break;
         default:
         case OUTPUT_DEFAULT:
@@ -196,7 +196,7 @@ static void print_header(output_format_t format, drakvuf_t drakvuf, const drakvu
             break;
         case OUTPUT_JSON:
             printf("{ \"syscall\": { \"Time\":" FORMAT_TIMEVAL ",\"PID\":%d,\"PPID\":%d,\"ProcessName\":\"%s\",\"Method\":\"%s\"",
-                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, g_strescape(info->proc_data.name, NULL),
                    info->trap->name);
             break;
         default:
