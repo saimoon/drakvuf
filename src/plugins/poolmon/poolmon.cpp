@@ -183,6 +183,8 @@ static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
                    pool_type_str, size);
             if (s)
                 printf(",%s,%s", s->source, s->description);
+
+            printf("\n");
             break;
 
         case OUTPUT_KV:
@@ -192,6 +194,8 @@ static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
                    tag, pool_type_str, size);
             if (s)
                 printf(",Source=%s,Description=%s", s->source, s->description);
+
+            printf("\n");
             break;
 
         case OUTPUT_JSON:
@@ -213,10 +217,10 @@ static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
                    pool_type_str, size);
             if (s)
                 printf(": %s,%s", s->source, s->description);
+
+            printf("\n");
             break;
     }
-
-    printf("\n");
 
 done:
     drakvuf_release_vmi(drakvuf);
