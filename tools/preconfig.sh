@@ -117,7 +117,7 @@ RUNFILE=$6
 OUTPUTFOLDER=$7
 MD5=$(md5sum $RUNFOLDER/$RUNFILE | awk -F" " '{print $1}')
 USER="Athos"
-CMD="c:\\\\windows\\\\system32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe -command (new-object System.Net.WebClient).Downloadfile('http://192.168.$VLAN.1/$RUNFILE', 'C:\Users\Athos\Desktop\test.exe')"
+CMD="c:\\\\windows\\\\system32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe -command (new-object System.Net.WebClient).Downloadfile('http://192.168.$VLAN.1/$RUNFILE', 'C:\\Users\\Athos\\Desktop\\$RUNFILE')"
 
 xl unpause $DOMAIN
 
