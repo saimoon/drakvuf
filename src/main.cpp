@@ -138,6 +138,7 @@ int main(int argc, char** argv)
     char* dump_folder = NULL;
     char* start_process_name = NULL;
     char* tcpip = NULL;
+    char *proctracer_config = NULL;
     vmi_pid_t injection_pid = -1;
     uint32_t injection_thread = 0;
     struct sigaction act;
@@ -188,11 +189,14 @@ int main(int argc, char** argv)
 #ifdef ENABLE_PLUGIN_SYSCALLS
                 "\t -S <syscalls filter>      File with list of syscalls for trap in syscalls plugin (trap all if parameter is absent)\n"
 #endif
+#ifdef ENABLE_PLUGIN_PROCTRACER
+                "\t -P <proctracer config>   Proctracer config json location\n"
+#endif
                );
         return rc;
     }
 
-    while ((c = getopt (argc, argv, "r:d:i:I:e:m:t:D:o:vx:spw:T:S:M")) != -1)
+    while ((c = getopt (argc, argv, "r:d:i:I:e:m:t:D:o:vx:spw:T:S:MP:")) != -1)
         switch (c)
         {
             case 'r':
@@ -242,6 +246,9 @@ int main(int argc, char** argv)
                 break;
             case 'T':
                 tcpip = optarg;
+                break;
+            case 'P':
+                proctracer_config = optarg;
                 break;
 #ifdef DRAKVUF_DEBUG
             case 'v':
@@ -310,7 +317,7 @@ int main(int argc, char** argv)
 
     PRINT_DEBUG("Starting plugins\n");
 
-    if ( drakvuf->start_plugins(plugin_list, dump_folder, dump_modified_files, cpuid_stealth, tcpip, syscalls_filter_file) < 0 )
+    if ( drakvuf->start_plugins(plugin_list, dump_folder, dump_modified_files, cpuid_stealth, tcpip, syscalls_filter_file, proctracer_config) < 0 )
         goto exit;
 
     PRINT_DEBUG("Beginning DRAKVUF loop\n");

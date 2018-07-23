@@ -173,7 +173,8 @@ public:
                       bool dump_modified_files,
                       bool cpuid_stealth,
                       const char* tcpip_profile,
-                      const char* syscalls_filter_file);
+                      const char* syscalls_filter_file,
+                      const char* proctracer_config);
     bool wait_for_process(const char* processname);
 
 };

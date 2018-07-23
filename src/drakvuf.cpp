@@ -132,7 +132,8 @@ int drakvuf_c::start_plugins(const bool* plugin_list,
                              bool dump_modified_files,         // PLUGIN_FILEDELETE
                              bool cpuid_stealth,               // PLUGIN_CPUIDMON
                              const char* tcpip_profile,        // PLUGIN_SOCKETMON
-                             const char* syscalls_filter_file) // PLUGIN_SYSCALLS
+                             const char* syscalls_filter_file, // PLUGIN_SYSCALLS
+                             const char* proctracer_config)    // PLUGIN_PROCTRACER
 {
     int i, rc;
 
@@ -176,6 +177,17 @@ int drakvuf_c::start_plugins(const bool* plugin_list,
                     {
                         .rekall_profile = this->rekall_profile,
                         .syscalls_filter_file = syscalls_filter_file
+                    };
+                    rc = this->plugins->start((drakvuf_plugin_t)i, &c);
+                    break;
+                }
+
+                case PLUGIN_PROCTRACER:
+                {
+                    struct proctracer_config c =
+                    {
+                        .rekall_profile = this->rekall_profile,
+                        .proctracer_config = proctracer_config
                     };
                     rc = this->plugins->start((drakvuf_plugin_t)i, &c);
                     break;

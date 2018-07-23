@@ -154,6 +154,10 @@ if PLUGIN_PROCMON
 sources += procmon/procmon.cpp
 endif
 
+if PLUGIN_PROCTRACER
+sources += proctracer/proctracer.cpp
+endif
+
 ###############################################################################
 sources += plugins.cpp plugins.h
 

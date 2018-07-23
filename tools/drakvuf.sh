@@ -115,10 +115,12 @@ VLAN=$4
 RUNFOLDER=$5
 RUNFILE=$6
 OUTPUTFOLDER=$7
+TCPIPREKALL=/home/simone/vm/win10/windows10prox64.tcpip.rekall.json
 MD5=$(md5sum $RUNFOLDER/$RUNFILE | awk -F" " '{print $1}')
-CMD="c:\\windows\\system32\\WindowsPowerShell\\v1.0\\powershell.exe -command Start-Process C:\\Users\\Athos\\Desktop\\test.exe -Verb runAs"
+CMD="C:\\Users\\Athos\\Desktop\\$RUNFILE"
 
-drakvuf -r $REKALL -d $DOMAIN -i $PID -e "$CMD" -D $OUTPUTFOLDER/$MD5 -o csv -t 60 1>$OUTPUTFOLDER/$MD5/drakvuf.log 2>&1
+#drakvuf -r $REKALL -d $DOMAIN -i $PID -e "$CMD" -D $OUTPUTFOLDER/$MD5 -o csv -t 60 1>$OUTPUTFOLDER/$MD5/drakvuf.log 2>&1
+drakvuf -r $REKALL -x proctracer -d $DOMAIN -i $PID -e "$CMD" -D $OUTPUTFOLDER/$MD5 -o kv -T $TCPIPREKALL 1>$OUTPUTFOLDER/$MD5/drakvuf.log 2>&1
 
 RET=$?
 

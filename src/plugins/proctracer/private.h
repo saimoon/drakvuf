@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2016 Tamas K Lengyel.                                  *
+ * DRAKVUF Dynamic Malware Analysis System (C) 2014-2015 Tamas K Lengyel.  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -102,114 +102,43 @@
  *                                                                         *
  ***************************************************************************/
 
-#ifndef DRAKVUF_PLUGINS_H
-#define DRAKVUF_PLUGINS_H
+#ifndef PROCTRACER_PRIVATE_H
+#define PROCTRACER_PRIVATE_H
 
-#include <config.h>
-#include <stdlib.h>
-#include <inttypes.h>
-#include <sys/time.h>
-#include <libdrakvuf/libdrakvuf.h>
+#include "proctracer.h"
 
-/***************************************************************************/
-
-/* Plugin-specific configuration input */
-struct filedelete_config
+enum offset
 {
-    const char* rekall_profile;
-    const char* dump_folder;
-    bool dump_modified_files;
-};
-struct socketmon_config
-{
-    const char* rekall_profile;
-    const char* tcpip_profile;
-};
-struct syscalls_config
-{
-    const char* rekall_profile;
-    const char* syscalls_filter_file;
-};
-struct proctracer_config
-{
-    const char* rekall_profile;
-    const char* proctracer_config;
+    EPROCESS_PEB,
+    EPROCESS_PID,
+    KPROCESS_DTB,
+    LDR_DATA_TABLE_ENTRY_BASEDLLNAME,
+    LDR_DATA_TABLE_ENTRY_DLLBASE,
+    PEB_IMGBASE,
+    __OFFSET_MAX
 };
 
-/***************************************************************************/
-
-typedef enum drakvuf_plugin
-{
-    PLUGIN_SYSCALLS,
-    PLUGIN_POOLMON,
-    PLUGIN_FILETRACER,
-    PLUGIN_FILEDELETE,
-    PLUGIN_OBJMON,
-    PLUGIN_EXMON,
-    PLUGIN_SSDTMON,
-    PLUGIN_DEBUGMON,
-    PLUGIN_CPUIDMON,
-    PLUGIN_SOCKETMON,
-    PLUGIN_REGMON,
-    PLUGIN_PROCMON,
-    PLUGIN_PROCTRACER,
-    __DRAKVUF_PLUGIN_LIST_MAX
-} drakvuf_plugin_t;
-
-static const char* drakvuf_plugin_names[] =
-{
-    [PLUGIN_SYSCALLS] = "syscalls",
-    [PLUGIN_POOLMON] = "poolmon",
-    [PLUGIN_FILETRACER] = "filetracer",
-    [PLUGIN_FILEDELETE] = "filedelete",
-    [PLUGIN_OBJMON] = "objmon",
-    [PLUGIN_EXMON] = "exmon",
-    [PLUGIN_SSDTMON] = "ssdtmon",
-    [PLUGIN_DEBUGMON] = "debugmon",
-    [PLUGIN_CPUIDMON] = "cpuidmon",
-    [PLUGIN_SOCKETMON] = "socketmon",
-    [PLUGIN_REGMON] = "regmon",
-    [PLUGIN_PROCMON] = "procmon",
-    [PLUGIN_PROCTRACER] = "proctracer",
+static const char *offset_names[__OFFSET_MAX][2] = {
+    [EPROCESS_PEB] = {"_EPROCESS", "Peb"},
+    [EPROCESS_PID] = {"_EPROCESS", "UniqueProcessId"},
+    [KPROCESS_DTB] = {"_KPROCESS", "DirectoryTableBase"},
+    [LDR_DATA_TABLE_ENTRY_BASEDLLNAME] = {"_LDR_DATA_TABLE_ENTRY", "BaseDllName"},
+    [LDR_DATA_TABLE_ENTRY_DLLBASE] = {"_LDR_DATA_TABLE_ENTRY", "DllBase"},
+    [PEB_IMGBASE] = {"_PEB", "ImageBaseAddress"}
 };
 
-static const bool drakvuf_plugin_os_support[__DRAKVUF_PLUGIN_LIST_MAX][VMI_OS_WINDOWS+1] =
+struct trace_trap_struct
 {
-    [PLUGIN_SYSCALLS]   = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 1 },
-    [PLUGIN_POOLMON]    = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
-    [PLUGIN_FILETRACER] = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
-    [PLUGIN_FILEDELETE] = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
-    [PLUGIN_OBJMON]     = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
-    [PLUGIN_EXMON]      = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
-    [PLUGIN_SSDTMON]    = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
-    [PLUGIN_DEBUGMON]   = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 1 },
-    [PLUGIN_CPUIDMON]   = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 1 },
-    [PLUGIN_SOCKETMON]  = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
-    [PLUGIN_REGMON]     = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
-    [PLUGIN_PROCMON]    = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
-    [PLUGIN_PROCTRACER] = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
+    char *proc_name;
+    addr_t pa;
+    drakvuf_trap_t *trap;
 };
 
-class plugin
+struct trace_info
 {
-public:
-    virtual ~plugin() {};
+    char *mod_name;
+    addr_t offset;
+    proctracer *p;
 };
-
-class drakvuf_plugins
-{
-private:
-    drakvuf_t drakvuf;
-    output_format_t output;
-    os_t os;
-    plugin* plugins[__DRAKVUF_PLUGIN_LIST_MAX] = { [0 ... __DRAKVUF_PLUGIN_LIST_MAX-1] = NULL };
-
-public:
-    drakvuf_plugins(drakvuf_t drakvuf, output_format_t output, os_t os);
-    ~drakvuf_plugins();
-    int start(drakvuf_plugin_t plugin, const void* config);
-};
-
-/***************************************************************************/
 
 #endif
