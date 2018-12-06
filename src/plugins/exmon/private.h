@@ -107,8 +107,8 @@
 
 #include "plugins/plugins.h"
 
-#define KV_FORMAT32 "exmon Time=" FORMAT_TIMEVAL ",RSP=%x,ExceptionRecord=0x%x,ExceptionCode=0x%x,FirstChance=%d,EIP=%x,EAX=%x,EBX=%x,ECX=%x,EDX=%x,EDI=%x,ESI=%x,EBP=%x,ESP=%x"
-#define KV_FORMAT64 "exmon Time=" FORMAT_TIMEVAL ",ExceptionRecord=0x%x,ExceptionCode=0x%x,FirstChance=%d,RIP=%x,RAX=%x,RBX=%x,RCX=%x,RDX=%x,RSP=%x,RBP=%x,RSI=%x,RDI=%x,R8=%x,R9=%x,R10=%x,R11=%x"
+#define KV_FORMAT32 "Plugin=exmon,Time=" FORMAT_TIMEVAL ",RSP=%x,ExceptionRecord=0x%x,ExceptionCode=0x%x,FirstChance=%d,EIP=%x,EAX=%x,EBX=%x,ECX=%x,EDX=%x,EDI=%x,ESI=%x,EBP=%x,ESP=%x"
+#define KV_FORMAT64 "Plugin=exmon,Time=" FORMAT_TIMEVAL ",ExceptionRecord=0x%x,ExceptionCode=0x%x,FirstChance=%d,RIP=%x,RAX=%x,RBX=%x,RCX=%x,RDX=%x,RSP=%x,RBP=%x,RSI=%x,RDI=%x,R8=%x,R9=%x,R10=%x,R11=%x"
 
 #define CSV_FORMAT32 "exmon," FORMAT_TIMEVAL ",%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x"
 #define CSV_FORMAT64 "exmon," FORMAT_TIMEVAL ",%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x"

@@ -1030,7 +1030,7 @@ static void print_injection_info(output_format_t format, vmi_pid_t pid, uint64_t
             break;
 
         case OUTPUT_KV:
-            printf("inject Time=" FORMAT_TIMEVAL ",PID=%u,DTB=0x%lx,ProcessName=\"%s\",InjectedPid=%u,InjectedTid=%u\n",
+            printf("Plugin=inject,Time=" FORMAT_TIMEVAL ",PID=%u,DTB=0x%lx,ProcessName=\"%s\",InjectedPid=%u,InjectedTid=%u\n",
                    UNPACK_TIMEVAL(t), pid, dtb, file, injected_pid, injected_tid);
             break;
 

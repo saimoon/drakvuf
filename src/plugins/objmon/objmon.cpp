@@ -179,7 +179,7 @@ static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             break;
 
         case OUTPUT_KV:
-            printf("objmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",Key=\"%c%c%c%c\"",
+            printf("Plugin=objmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",Key=\"%c%c%c%c\"",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
                    ckey._key[0], ckey._key[1], ckey._key[2], ckey._key[3]);
             break;

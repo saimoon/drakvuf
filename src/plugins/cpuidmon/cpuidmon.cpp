@@ -134,7 +134,7 @@ event_response_t cpuid_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
             break;
 
         case OUTPUT_KV:
-            printf("cpuidmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\","
+            printf("Plugin=cpuidmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\","
                    "Leaf=0x%" PRIx32 ",Subleaf=0x%" PRIx32","
                    "RAX=0x%" PRIx64 ",RBX=0x%" PRIx64 ",RCX=0x%" PRIx64 ",RDX=0x%" PRIx64 "\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,

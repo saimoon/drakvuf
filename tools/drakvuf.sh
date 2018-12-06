@@ -120,7 +120,7 @@ MD5=$(md5sum $RUNFOLDER/$RUNFILE | awk -F" " '{print $1}')
 CMD="C:\\Users\\Athos\\Desktop\\$RUNFILE"
 
 #drakvuf -r $REKALL -d $DOMAIN -i $PID -e "$CMD" -D $OUTPUTFOLDER/$MD5 -o csv -t 60 1>$OUTPUTFOLDER/$MD5/drakvuf.log 2>&1
-drakvuf -r $REKALL -d $DOMAIN -i $PID -e "$CMD" -D $OUTPUTFOLDER/$MD5 -o kv -T $TCPIPREKALL -t 60 1>$OUTPUTFOLDER/$MD5/drakvuf.log 2>&1
+drakvuf -r $REKALL -x proctracer -d $DOMAIN -i $PID -e "$CMD" -D $OUTPUTFOLDER/$MD5 -o kv -T $TCPIPREKALL -t 60 1>$OUTPUTFOLDER/$MD5/drakvuf.log 2>&1
 
 RET=$?
 
@@ -130,5 +130,8 @@ fi
 
 TCPDUMPPID=$(ps aux | grep "tcpdump -i xenbr1.$VLAN" | grep -v grep | awk -F" " '{print $2}')
 kill -9 $TCPDUMPPID 1>/dev/null 2>&1
+
+# workaround
+mv $OUTPUTFOLDER/$MD5/drakvuf.log $OUTPUTFOLDER/$MD5/$MD5.log
 
 exit $RET;
