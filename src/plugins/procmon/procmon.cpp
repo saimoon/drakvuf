@@ -156,7 +156,7 @@ static void print_process_creation_result(
             break;
 
         case OUTPUT_KV:
-            printf("procmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\","
+            printf("Plugin=procmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\","
                    "Method=%s,Status=0x%" PRIx64 ",NewPid=%d,CommandLine=\"%s\",ImagePathName=\"%s\"\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
                    info->trap->name, status, new_pid, cmdline, imagepath);
@@ -374,7 +374,7 @@ static event_response_t terminate_process_hook(
             break;
 
         case OUTPUT_KV:
-            printf("procmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\","
+            printf("Plugin=procmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\","
                    "Method=%s,ExitPid=%d,ExitStatus=0x%" PRIx64 "\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
                    info->trap->name, exit_pid, exit_status);

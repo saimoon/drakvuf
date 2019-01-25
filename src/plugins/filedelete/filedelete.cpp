@@ -378,7 +378,7 @@ static void grab_file_by_handle(filedelete* f, drakvuf_t drakvuf,
                        UNPACK_TIMEVAL(info->timestamp), info->vcpu, info->regs->cr3, info->proc_data.name, info->proc_data.userid, filename_us->contents);
                 break;
             case OUTPUT_KV:
-                printf("filedelete Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",Method=%s,FileName=\"%s\"\n",
+                printf("Plugin=filedelete,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",Method=%s,FileName=\"%s\"\n",
                        UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
                        info->trap->name, filename_us->contents);
                 break;

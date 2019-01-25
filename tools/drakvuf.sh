@@ -115,18 +115,28 @@ VLAN=$4
 RUNFOLDER=$5
 RUNFILE=$6
 OUTPUTFOLDER=$7
-MD5=$(md5sum $RUNFOLDER/$RUNFILE | awk -F" " '{print $1}')
-CMD="c:\\windows\\system32\\WindowsPowerShell\\v1.0\\powershell.exe -command Start-Process C:\\Users\\Athos\\Desktop\\test.exe -Verb runAs"
+TCPIPREKALL=/home/simone/vm/win10/windows10prox64.tcpip.rekall.json
+ANALYSIS_ID=${RUNFILE:0:36}
+CMD="C:\\Users\\Athos\\Desktop\\${RUNFILE:37}"
 
-drakvuf -r $REKALL -d $DOMAIN -i $PID -e "$CMD" -D $OUTPUTFOLDER/$MD5 -o csv -t 60 1>$OUTPUTFOLDER/$MD5/drakvuf.log 2>&1
+echo "[-] DEBUG ${RUNFILE:37} - call the drakvuf..."
+drakvuf -r $REKALL -x proctracer -d $DOMAIN -i $PID -e "$CMD" -D $OUTPUTFOLDER/$ANALYSIS_ID -o kv -T $TCPIPREKALL -t 60 1>$OUTPUTFOLDER/$ANALYSIS_ID/drakvuf.log 2>&1
+echo "[-] DEBUG ${RUNFILE:37} - call the drakvuf...DONE"
 
 RET=$?
 
-if [ $RET -eq 1 ]; then
-   mv $RUNFOLDER/$RUNFILE $OUTPUTFOLDER/$MD5 1>/dev/null 2>&1
-fi
-
 TCPDUMPPID=$(ps aux | grep "tcpdump -i xenbr1.$VLAN" | grep -v grep | awk -F" " '{print $2}')
+echo "[-] DEBUG ${RUNFILE:37} -kill tcpdump..."
 kill -9 $TCPDUMPPID 1>/dev/null 2>&1
+echo "[-] DEBUG ${RUNFILE:37} -kill tcpdump...DONE"
+
+# workaround
+echo "[-] DEBUG ${RUNFILE:37} - rename drakvuf.log into $ANALYSIS_ID..."
+mv $OUTPUTFOLDER/$ANALYSIS_ID/drakvuf.log $OUTPUTFOLDER/$ANALYSIS_ID/$ANALYSIS_ID
+echo "[-] DEBUG ${RUNFILE:37} - rename drakvuf.log into $ANALYSIS_ID...DONE"
+
+echo "[-] DEBUG ${RUNFILE:37} - remove folder $RUNFOLDER/$ANALYSIS_ID..."
+rm -r $RUNFOLDER/$ANALYSIS_ID 1>/dev/null 2>&1
+echo "[-] DEBUG ${RUNFILE:37} - remove folder $RUNFOLDER/$ANALYSIS_ID...DONE"
 
 exit $RET;

@@ -266,7 +266,7 @@ static event_response_t udpa_x86_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
             break;
 
         case OUTPUT_KV:
-            printf("socketmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,LocalIp=%s,LocalPort=%" PRIu16 "\n",
+            printf("Plugin=socketmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,LocalIp=%s,LocalPort=%" PRIu16 "\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
                    info->proc_data.name, info->proc_data.userid,
                    owner, ownerid,
@@ -381,7 +381,7 @@ static event_response_t udpa_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
             break;
 
         case OUTPUT_KV:
-            printf("socketmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64",Owner=%s,OwnerId=%" PRIi64",Protocol=%s,LocalIp=%s,LocalPort=%" PRIu16 "\n",
+            printf("Plugin=socketmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64",Owner=%s,OwnerId=%" PRIi64",Protocol=%s,LocalIp=%s,LocalPort=%" PRIu16 "\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
                    info->proc_data.name, info->proc_data.userid,
                    owner, ownerid,
@@ -497,7 +497,7 @@ static event_response_t udpa_win10_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_in
             break;
 
         case OUTPUT_KV:
-            printf("socketmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64",Owner=%s,"
+            printf("Plugin=socketmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64",Owner=%s,"
                    "OwnerId=%" PRIi64",Protocol=%s,LocalIp=%s,LocalPort=%" PRIu16 "\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
                    info->proc_data.name, info->proc_data.userid,
@@ -642,7 +642,7 @@ static event_response_t tcpe_x86_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info
             break;
 
         case OUTPUT_KV:
-            printf("socketmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,TcpState=%s,"
+            printf("Plugin=socketmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,TcpState=%s,"
                    "LocalIp=%s,LocalPort=%" PRIu16 ",RemoteIp=%s,RemotePort=%" PRIu16 "\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
                    info->proc_data.name, info->proc_data.userid,
@@ -770,7 +770,7 @@ static event_response_t tcpe_x64_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info
             break;
 
         case OUTPUT_KV:
-            printf("socketmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,TcpState=%s,"
+            printf("Plugin=socketmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,TcpState=%s,"
                    "LocalIp=%s,LocalPort=%" PRIu16 ",RemoteIp=%s,RemotePort=%" PRIu16 "\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
                    info->proc_data.name, info->proc_data.userid,
@@ -899,7 +899,7 @@ static event_response_t tcpe_win10_x64_cb(drakvuf_t drakvuf, drakvuf_trap_info_t
             break;
 
         case OUTPUT_KV:
-            printf("socketmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,TcpState=%s,"
+            printf("Plugin=socketmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,TcpState=%s,"
                    "LocalIp=%s,LocalPort=%" PRIu16 ",RemoteIp=%s,RemotePort=%" PRIu16 "\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
                    info->proc_data.name, info->proc_data.userid,
@@ -1027,7 +1027,7 @@ static event_response_t tcpl_x86_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
             break;
 
         case OUTPUT_KV:
-            printf("socketmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,listener,LocalIp=%s,LocalPort=%" PRIu16 "\n",
+            printf("Plugin=socketmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,listener,LocalIp=%s,LocalPort=%" PRIu16 "\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
                    info->proc_data.name, info->proc_data.userid,
                    owner, ownerid,
@@ -1143,7 +1143,7 @@ static event_response_t tcpl_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
             break;
 
         case OUTPUT_KV:
-            printf("socketmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,listener,LocalIp=%s,LocalPort=%" PRIu16 "\n",
+            printf("Plugin=socketmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,listener,LocalIp=%s,LocalPort=%" PRIu16 "\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
                    info->proc_data.name, info->proc_data.userid,
                    owner, ownerid,
@@ -1259,7 +1259,7 @@ static event_response_t tcpl_win10_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_in
             break;
 
         case OUTPUT_KV:
-            printf("socketmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,listener,LocalIp=%s,LocalPort=%" PRIu16 "\n",
+            printf("Plugin=socketmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",UserId=%" PRIi64 ",Owner=%s,OwnerId=%" PRIi64 ",Protocol=%s,listener,LocalIp=%s,LocalPort=%" PRIu16 "\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
                    info->proc_data.name, info->proc_data.userid,
                    owner, ownerid,
