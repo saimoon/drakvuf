@@ -115,18 +115,35 @@ VLAN=$4
 RUNFOLDER=$5
 RUNFILE=$6
 OUTPUTFOLDER=$7
-MD5=$(md5sum $RUNFOLDER/$RUNFILE | awk -F" " '{print $1}')
+#MD5=$(md5sum $RUNFOLDER/$RUNFILE | awk -F" " '{print $1}')
+ANALYSIS_ID=${RUNFILE:0:36}
 USER="Athos"
-CMD="c:\\\\windows\\\\system32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe -command (new-object System.Net.WebClient).Downloadfile('http://192.168.$VLAN.1/$RUNFILE', 'C:\\Users\\Athos\\Desktop\\$RUNFILE')"
+CMD="c:\\\\windows\\\\system32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe -command (new-object System.Net.WebClient).Downloadfile('http://192.168.$VLAN.1/$ANALYSIS_ID/${RUNFILE:37}', 'C:\\Users\\Athos\\Desktop\\${RUNFILE:37}')"
 
+echo "[-] DEBUG ${RUNFILE:37} - unpause $DOMAIN..."
 xl unpause $DOMAIN
+echo "[-] DEBUG ${RUNFILE:37} - unpause $DOMAIN... DONE"
 
 sleep 10
 
-mkdir -p $OUTPUTFOLDER/$MD5 1>/dev/null 2>&1
-xl list 1>$OUTPUTFOLDER/$MD5/xl.log 2>&1
+mkdir -p $RUNFOLDER/$ANALYSIS_ID 1>/dev/null 2>&1
+mkdir -p $OUTPUTFOLDER/$ANALYSIS_ID 1>/dev/null 2>&1
 
-injector $REKALL $DOMAIN $PID "$CMD" 1>$OUTPUTFOLDER/$MD5/preconfig.log 2>&1
+echo "[-] DEBUG ${RUNFILE:37} - created directory $RUNFOLDER/$ANALYSIS_ID"
+echo "[-] DEBUG ${RUNFILE:37} - created directory $OUTPUTFOLDER/$ANALYSIS_ID"
+
+mv $RUNFOLDER/$RUNFILE $RUNFOLDER/$ANALYSIS_ID/${RUNFILE:37} 1>/dev/null 2>&1
+
+echo "[-] DEBUG ${RUNFILE:37} - moved $RUNFOLDER/$RUNFILE to $RUNFOLDER/$ANALYSIS_ID/${RUNFILE:37}"
+
+xl list 1>$OUTPUTFOLDER/$ANALYSIS_ID/xl.log 2>&1
+
+echo "[-] DEBUG ${RUNFILE:37} - created file $OUTPUTFOLDER/$ANALYSIS_ID/xl.log"
+
+echo "[-] DEBUG ${RUNFILE:37} - call the injector..."
+injector $REKALL $DOMAIN $PID "$CMD" 1>$OUTPUTFOLDER/$ANALYSIS_ID/preconfig.log 2>&1
+
+echo "[-] DEBUG ${RUNFILE:37} - call the injector...DONE"
 
 sleep 10
 

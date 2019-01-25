@@ -240,3 +240,4 @@ sub clone {
 ############################################################
 
 clone($ARGV[0], $ARGV[1], $ARGV[2]);
+print "[-] DEBUG - clone DONE \n"
