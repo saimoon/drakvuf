@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -129,6 +129,10 @@
 
 #include <byteswap.h>
 
+#include <string>
+#include <iostream>
+#include <cassert>
+
 #include <libvmi/libvmi.h>
 #include "plugins/plugins.h"
 #include "private.h"
@@ -148,32 +152,36 @@ void free_wrapper (drakvuf_trap_t* trap)
 
 static inline void ipv4_to_str(char** str, uint8_t ipv4[4])
 {
-    *str = (char*)g_malloc0(snprintf(NULL, 0, "%u.%u.%u.%u",
-                                     ipv4[0], ipv4[1], ipv4[2], ipv4[3]) + 1);
+    size_t size = snprintf(NULL, 0, "%u.%u.%u.%u",
+                           ipv4[0], ipv4[1], ipv4[2], ipv4[3]);
+
+    *str = (char*)g_malloc0(size + 1);
     if ( !(*str) )
         return;
 
-    sprintf(*str, "%u.%u.%u.%u", ipv4[0], ipv4[1], ipv4[2], ipv4[3]);
+    snprintf(*str, size, "%u.%u.%u.%u", ipv4[0], ipv4[1], ipv4[2], ipv4[3]);
 }
 
 static inline void ipv6_to_str(char** str, uint8_t ipv6[16])
 {
-    *str = (char*)g_malloc0(snprintf(NULL, 0,
-                                     "%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x",
-                                     ipv6[0], ipv6[1], ipv6[2], ipv6[3],
-                                     ipv6[4], ipv6[5], ipv6[6], ipv6[7],
-                                     ipv6[8], ipv6[9], ipv6[10], ipv6[11],
-                                     ipv6[12], ipv6[13], ipv6[14], ipv6[15]) + 1);
+    size_t size = snprintf(NULL, 0,
+                           "%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x",
+                           ipv6[0], ipv6[1], ipv6[2], ipv6[3],
+                           ipv6[4], ipv6[5], ipv6[6], ipv6[7],
+                           ipv6[8], ipv6[9], ipv6[10], ipv6[11],
+                           ipv6[12], ipv6[13], ipv6[14], ipv6[15]);
+
+    *str = (char*)g_malloc0(size + 1);
 
     if ( !(*str) )
         return;
 
-    sprintf(*str,
-            "%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x",
-            ipv6[0], ipv6[1], ipv6[2], ipv6[3],
-            ipv6[4], ipv6[5], ipv6[6], ipv6[7],
-            ipv6[8], ipv6[9], ipv6[10], ipv6[11],
-            ipv6[12], ipv6[13], ipv6[14], ipv6[15]);
+    snprintf(*str, size,
+             "%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x",
+             ipv6[0], ipv6[1], ipv6[2], ipv6[3],
+             ipv6[4], ipv6[5], ipv6[6], ipv6[7],
+             ipv6[8], ipv6[9], ipv6[10], ipv6[11],
+             ipv6[12], ipv6[13], ipv6[14], ipv6[15]);
 }
 
 static event_response_t udpa_x86_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
@@ -251,7 +259,7 @@ static event_response_t udpa_x86_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
         ipv6_to_str(&lip, localip);
     }
 
-    owner = drakvuf_get_process_name(drakvuf, udpa.owner);
+    owner = drakvuf_get_process_name(drakvuf, udpa.owner, 1);
     ownerid = drakvuf_get_process_userid(drakvuf, udpa.owner);
 
     switch (s->format)
@@ -366,7 +374,7 @@ static event_response_t udpa_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
         ipv6_to_str(&lip, localip);
     }
 
-    owner = drakvuf_get_process_name(drakvuf, udpa.owner);
+    owner = drakvuf_get_process_name(drakvuf, udpa.owner, 1);
     ownerid = drakvuf_get_process_userid(drakvuf, udpa.owner);
 
     switch (s->format)
@@ -482,7 +490,7 @@ static event_response_t udpa_win10_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_in
         ipv6_to_str(&lip, localip);
     }
 
-    owner = drakvuf_get_process_name(drakvuf, udpa.owner);
+    owner = drakvuf_get_process_name(drakvuf, udpa.owner, 1);
     ownerid = drakvuf_get_process_userid(drakvuf, udpa.owner);
 
     switch (s->format)
@@ -626,7 +634,7 @@ static event_response_t tcpe_x86_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info
         ipv6_to_str(&rip, remoteip);
     }
 
-    owner = drakvuf_get_process_name(drakvuf, tcpe.owner);
+    owner = drakvuf_get_process_name(drakvuf, tcpe.owner, 1);
     ownerid = drakvuf_get_process_userid(drakvuf, tcpe.owner);
 
     switch (s->format)
@@ -754,7 +762,7 @@ static event_response_t tcpe_x64_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info
         ipv6_to_str(&rip, remoteip);
     }
 
-    owner = drakvuf_get_process_name(drakvuf, tcpe.owner);
+    owner = drakvuf_get_process_name(drakvuf, tcpe.owner, 1);
     ownerid = drakvuf_get_process_userid(drakvuf, tcpe.owner);
 
     switch (s->format)
@@ -883,7 +891,7 @@ static event_response_t tcpe_win10_x64_cb(drakvuf_t drakvuf, drakvuf_trap_info_t
         ipv6_to_str(&rip, remoteip);
     }
 
-    owner = drakvuf_get_process_name(drakvuf, tcpe.owner);
+    owner = drakvuf_get_process_name(drakvuf, tcpe.owner, 1);
     ownerid = drakvuf_get_process_userid(drakvuf, tcpe.owner);
 
     switch (s->format)
@@ -1012,7 +1020,7 @@ static event_response_t tcpl_x86_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
         ipv6_to_str(&lip, localip);
     }
 
-    owner = drakvuf_get_process_name(drakvuf, tcpl.owner);
+    owner = drakvuf_get_process_name(drakvuf, tcpl.owner, 1);
     ownerid = drakvuf_get_process_userid(drakvuf, tcpl.owner);
 
     switch (s->format)
@@ -1128,7 +1136,7 @@ static event_response_t tcpl_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* 
         ipv6_to_str(&lip, localip);
     }
 
-    owner = drakvuf_get_process_name(drakvuf, tcpl.owner);
+    owner = drakvuf_get_process_name(drakvuf, tcpl.owner, 1);
     ownerid = drakvuf_get_process_userid(drakvuf, tcpl.owner);
 
     switch (s->format)
@@ -1244,7 +1252,7 @@ static event_response_t tcpl_win10_x64_ret_cb(drakvuf_t drakvuf, drakvuf_trap_in
         ipv6_to_str(&lip, localip);
     }
 
-    owner = drakvuf_get_process_name(drakvuf, tcpl.owner);
+    owner = drakvuf_get_process_name(drakvuf, tcpl.owner, 1);
     ownerid = drakvuf_get_process_userid(drakvuf, tcpl.owner);
 
     switch (s->format)
@@ -1304,7 +1312,10 @@ static event_response_t tcpl_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     drakvuf_release_vmi(drakvuf);
 
     if ( !w->obj )
+    {
+        g_free(w);
         return 0;
+    }
 
     drakvuf_trap_t* trap = (drakvuf_trap_t*)g_malloc0(sizeof(drakvuf_trap_t));
     trap->breakpoint.lookup_type = LOOKUP_PID;
@@ -1327,7 +1338,10 @@ static event_response_t tcpl_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     };
 
     if ( !drakvuf_add_trap(drakvuf, trap) )
+    {
         printf("Failed to trap return at 0x%lx\n", rsp);
+        g_free(w);
+    }
 
     return 0;
 }
@@ -1349,7 +1363,10 @@ static event_response_t udpb_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     drakvuf_release_vmi(drakvuf);
 
     if ( !w->obj )
+    {
+        g_free(w);
         return 0;
+    }
 
     drakvuf_trap_t* trap = (drakvuf_trap_t*)g_malloc0(sizeof(drakvuf_trap_t));
     trap->breakpoint.lookup_type = LOOKUP_PID;
@@ -1372,97 +1389,360 @@ static event_response_t udpb_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     };
 
     if ( !drakvuf_add_trap(drakvuf, trap) )
+    {
         printf("Failed to trap return at 0x%lx\n", rsp);
+        g_free(w);
+    }
 
     return 0;
 }
 
 /* ----------------------------------------------------- */
 
+static void print_dns_info(drakvuf_t drakvuf, drakvuf_trap_info_t* info, socketmon* sm, const char* function_name, const char* dns_name)
+{
+    switch (sm->format)
+    {
+        case OUTPUT_CSV:
+            printf("socketmon," FORMAT_TIMEVAL ",%" PRIu32 ",0x%" PRIx64 ",\"%s\",\"%s\",\"%s\"\n",
+                   UNPACK_TIMEVAL(info->timestamp), info->vcpu, info->regs->cr3,
+                   info->proc_data.name, dns_name, function_name);
+            break;
+
+        case OUTPUT_KV:
+            printf("socketmon Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",DnsName=\"%s\",Method=\"%s\"\n",
+                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid,
+                   info->proc_data.name, dns_name, function_name);
+            break;
+
+        default:
+        case OUTPUT_DEFAULT:
+            printf("[SOCKETMON] TIME:" FORMAT_TIMEVAL " VCPU:%" PRIu32 " CR3:0x%" PRIx64 ",\"%s\" DNS_NAME:\"%s\" METHOD:\"%s\"\n",
+                   UNPACK_TIMEVAL(info->timestamp), info->vcpu, info->regs->cr3, info->proc_data.name,
+                   dns_name, function_name);
+            break;
+    };
+}
+
+static event_response_t trap_DnsQuery_A_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
+{
+    socketmon* sm = (socketmon*)info->trap->data;
+
+    addr_t domain_name_addr = drakvuf_get_function_argument(drakvuf, info, 1);
+
+    access_context_t ctx;
+    ctx.translate_mechanism = VMI_TM_PROCESS_DTB;
+    ctx.dtb = info->regs->cr3;
+    ctx.addr = domain_name_addr;
+
+    char* dns_name = [&]
+    {
+        vmi_lock_guard vmi_lg(drakvuf);
+        return vmi_read_str(vmi_lg.vmi, &ctx);
+    }();
+    print_dns_info(drakvuf, info, sm, info->trap->name, dns_name);
+    g_free(dns_name);
+
+    return 0;
+}
+
+
+static event_response_t trap_DnsQuery_W_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
+{
+    socketmon* sm = (socketmon*)info->trap->data;
+
+    addr_t domain_name_addr = drakvuf_get_function_argument(drakvuf, info, 1);
+    unicode_string_t* domain_name_us = nullptr;
+
+    access_context_t ctx;
+    ctx.translate_mechanism = VMI_TM_PROCESS_DTB;
+    ctx.dtb = info->regs->cr3;
+    ctx.addr = domain_name_addr;
+
+    {
+        vmi_lock_guard vmi_lg(drakvuf);
+        domain_name_us = drakvuf_read_wchar_string(vmi_lg.vmi, &ctx);
+    }
+
+    if (domain_name_us)
+    {
+        print_dns_info(drakvuf, info, sm, info->trap->name, (char*)domain_name_us->contents);
+    }
+    else
+    {
+        PRINT_DEBUG("[SOCKETMON] Error, getting unicode domain name string in %s()", __FUNCTION__);
+    }
+    vmi_free_unicode_str(domain_name_us);
+
+    return 0;
+}
+
+// Works on Windows 7
+static event_response_t trap_DnsQueryExW_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
+{
+    unicode_string_t* domain_name_us = nullptr;
+    socketmon* sm = (socketmon*)info->trap->data;
+
+    addr_t domain_name_addr = drakvuf_get_function_argument(drakvuf, info, 1);
+
+    {
+        dns_query_ex_w_string_t function_specific_string;
+        uint32_t struct_size = sizeof(function_specific_string);
+
+        access_context_t ctx;
+        ctx.translate_mechanism = VMI_TM_PROCESS_DTB;
+        ctx.dtb = info->regs->cr3;
+        ctx.addr = domain_name_addr;
+
+        vmi_lock_guard vmi_lg(drakvuf);
+
+        // Read strange function-specific string
+        if ( VMI_FAILURE == vmi_read(vmi_lg.vmi, &ctx, struct_size, &function_specific_string, NULL) )
+        {
+            PRINT_DEBUG("[SOCKETMON] Error, getting unicode domain name string from 'strange string' in %s()", __FUNCTION__);
+            return 0;
+        }
+
+        ctx.addr = function_specific_string.pBuffer;
+        domain_name_us = drakvuf_read_wchar_string(vmi_lg.vmi, &ctx);
+    }
+
+    if (domain_name_us)
+    {
+        print_dns_info(drakvuf, info, sm, info->trap->name, (char*)domain_name_us->contents);
+    }
+    else
+    {
+        PRINT_DEBUG("[SOCKETMON] Error, getting unicode domain name string in %s()", __FUNCTION__);
+    }
+
+    vmi_free_unicode_str(domain_name_us);
+
+    return 0;
+}
+
+// Works on Windows 7
+static event_response_t trap_DnsQueryExA_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
+{
+    socketmon* sm = (socketmon*)info->trap->data;
+
+    addr_t domain_name_addr = drakvuf_get_function_argument(drakvuf, info, 1);
+
+    access_context_t ctx;
+    ctx.translate_mechanism = VMI_TM_PROCESS_DTB;
+    ctx.dtb = info->regs->cr3;
+    ctx.addr = domain_name_addr;
+
+    char* dns_name = [&]
+    {
+        vmi_lock_guard vmi_lg(drakvuf);
+        return vmi_read_str(vmi_lg.vmi, &ctx);
+    }();
+
+    print_dns_info(drakvuf, info, sm, info->trap->name, dns_name);
+    g_free(dns_name);
+
+    return 0;
+}
+
+// Works on Windows 8+
+static event_response_t trap_DnsQueryEx_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
+{
+    socketmon* sm = (socketmon*)info->trap->data;
+
+    unicode_string_t* domain_name_us = nullptr;
+
+    addr_t query_request_addr = drakvuf_get_function_argument(drakvuf, info, 1);
+    addr_t query_name_addr = 0;
+
+    access_context_t ctx;
+    ctx.translate_mechanism = VMI_TM_PROCESS_DTB;
+    ctx.dtb = info->regs->cr3;
+    ctx.addr = query_request_addr + drakvuf_get_address_width(drakvuf);
+
+    {
+        vmi_lock_guard vmi_lg(drakvuf);
+
+        if ( VMI_FAILURE == vmi_read_addr(vmi_lg.vmi, &ctx, &query_name_addr) )
+        {
+            PRINT_DEBUG("[SOCKETMON] Couldn't read query_name_addr in %s(...) trap. Unsupported.\n", info->trap->name);
+            return 0;
+        }
+
+        ctx.addr = query_name_addr;
+        domain_name_us = drakvuf_read_wchar_string(vmi_lg.vmi, &ctx);
+    }
+
+    if (domain_name_us)
+    {
+        print_dns_info(drakvuf, info, sm, info->trap->name, (const char*)domain_name_us->contents);
+    }
+    else
+    {
+        PRINT_DEBUG("[SOCKETMON] Error, getting unicode domain name string in %s()", __FUNCTION__);
+    }
+
+    vmi_free_unicode_str(domain_name_us);
+
+    return 0;
+}
+
+static void register_tcpip_trap( drakvuf_t drakvuf, json_object* tcpip_profile_json, const char* function_name,
+                                 drakvuf_trap_t* trap,
+                                 event_response_t(*hook_cb)( drakvuf_t drakvuf, drakvuf_trap_info_t* info ) )
+{
+    if ( !rekall_get_function_rva(tcpip_profile_json, function_name, &trap->breakpoint.rva) ) throw -1;
+
+    trap->name = function_name;
+    trap->cb   = hook_cb;
+
+    if ( ! drakvuf_add_trap( drakvuf, trap ) ) throw -1;
+}
+
+namespace
+{
+
+struct module_trap_context_t
+{
+    const char* module_name;
+    const char* function_name;
+    drakvuf_trap_t* trap;
+    event_response_t(*hook_cb)(drakvuf_t drakvuf, drakvuf_trap_info_t* info);
+};
+
+}
+
+static bool module_trap_visitor(drakvuf_t drakvuf, const module_info_t* module_info, void* visitor_ctx )
+{
+    module_trap_context_t const* data = reinterpret_cast<module_trap_context_t*>(visitor_ctx);
+    status_t ret ;
+    vmi_instance_t vmi;
+    addr_t exec_func ;
+    access_context_t ctx = { .translate_mechanism = VMI_TM_PROCESS_DTB,
+                             .dtb                 = module_info->dtb,
+                             .addr                = module_info->base_addr
+                           };
+
+    PRINT_DEBUG("[SOCKETMON] trap_visitor: CR3[0x%lX] pid[0x%X] base_name[%s] load_address[0x%lX] full_name[%s]\n",
+                module_info->dtb, module_info->pid, module_info->base_name.contents, module_info->base_addr, module_info->full_name.contents );
+
+    vmi = drakvuf_lock_and_get_vmi( drakvuf );
+
+    ret = vmi_translate_sym2v( vmi, &ctx, data->function_name, &exec_func );
+
+    drakvuf_release_vmi( drakvuf );
+
+    if ( ret == VMI_FAILURE )
+    {
+        PRINT_DEBUG("[SOCKETMON] Failed to get address of %s!%s\n", data->module_name, data->function_name);
+        return false;
+    }
+
+    PRINT_DEBUG("[SOCKETMON] Address of %s!%s is 0x%lx\n", data->module_name, data->function_name, exec_func);
+
+    data->trap->breakpoint.module = data->module_name;
+    data->trap->breakpoint.pid    = module_info->pid;
+    data->trap->breakpoint.addr   = exec_func;
+
+    data->trap->name = data->function_name;
+    data->trap->cb   = data->hook_cb;
+
+    return drakvuf_add_trap(drakvuf, data->trap);
+}
+
+static void register_module_trap( drakvuf_t drakvuf, drakvuf_trap_t* trap,
+                                  const char* module_name, const char* function_name,
+                                  event_response_t(*hook_cb)( drakvuf_t drakvuf, drakvuf_trap_info_t* info ) )
+{
+    struct module_trap_context_t visitor_ctx;
+    visitor_ctx.module_name = module_name;
+    visitor_ctx.function_name = function_name;
+    visitor_ctx.trap = trap;
+    visitor_ctx.hook_cb = hook_cb;
+
+    if (!drakvuf_enumerate_processes_with_module(drakvuf, module_name, module_trap_visitor, &visitor_ctx))
+    {
+        PRINT_DEBUG("[SOCKETMON] Failed to trap function %s!%s\n", module_name, function_name);
+        throw -1;
+    }
+}
+
+static void register_dnsapi_trap( drakvuf_t drakvuf, drakvuf_trap_t* trap,
+                                  const char* function_name,
+                                  event_response_t(*hook_cb)( drakvuf_t drakvuf, drakvuf_trap_info_t* info ) )
+{
+    register_module_trap(drakvuf, trap, "dnsapi.dll", function_name, hook_cb);
+}
+
+static win_ver_t get_win_ver(drakvuf_t drakvuf)
+{
+    vmi_instance_t vmi = drakvuf_lock_and_get_vmi(drakvuf);
+    win_ver_t winver = vmi_get_winver(vmi);
+    drakvuf_release_vmi(drakvuf);
+    return winver;
+}
+
 socketmon::socketmon(drakvuf_t drakvuf, const void* config, output_format_t output)
 {
     const struct socketmon_config* c = (const struct socketmon_config*)config;
-    const char* tcpip_profile = c->tcpip_profile;
-    vmi_instance_t vmi = drakvuf_lock_and_get_vmi(drakvuf);
-    this->pm = vmi_get_page_mode(vmi, 0);
-    this->winver = vmi_get_winver(vmi);
-    drakvuf_release_vmi(drakvuf);
+    this->pm = drakvuf_get_page_mode(drakvuf);
+    this->winver = get_win_ver(drakvuf);
     this->format = output;
 
-    if ( !tcpip_profile )
+    if ( !c->tcpip_profile )
     {
-        fprintf(stderr, "Socketmon plugin requires the Rekall profile for tcpip.sys!\n");
+        PRINT_DEBUG("Socketmon plugin requires the Rekall profile for tcpip.sys!\n");
         return;
     }
 
     if ( this->winver == VMI_OS_WINDOWS_10 && this->pm != VMI_PM_IA32E )
     {
-        fprintf(stderr, "Socketmon plugin not supported on 32-bit Windows 10\n");
+        PRINT_DEBUG("Socketmon plugin not supported on 32-bit Windows 10\n");
         throw -1;
     }
 
-    if ( this->pm == VMI_PM_IA32E )
+    assert(sizeof(dnsapi_traps) / sizeof(dnsapi_traps[0]) > 5);
+    register_dnsapi_trap(drakvuf, &this->dnsapi_traps[0], "DnsQuery_W", trap_DnsQuery_W_cb);
+    register_dnsapi_trap(drakvuf, &this->dnsapi_traps[1], "DnsQuery_A", trap_DnsQuery_A_cb);
+    register_dnsapi_trap(drakvuf, &this->dnsapi_traps[2], "DnsQuery_UTF8", trap_DnsQuery_A_cb); // intentionally trap_DnsQuery_A_cb
+
+    if (this->winver == VMI_OS_WINDOWS_7)
     {
-        switch (this->winver)
-        {
-            case VMI_OS_WINDOWS_10:
-                this->trap[0].cb = tcpe_win10_x64_cb;
-                this->trap[1].cb = tcpe_win10_x64_cb;
-                this->trap[2].cb = tcpe_win10_x64_cb;
-                this->trap[3].cb = tcpe_win10_x64_cb;
-                this->trap[4].cb = tcpe_win10_x64_cb;
-                break;
-            default:
-            case VMI_OS_WINDOWS_7:
-                this->trap[0].cb = tcpe_x64_cb;
-                this->trap[1].cb = tcpe_x64_cb;
-                this->trap[2].cb = tcpe_x64_cb;
-                this->trap[3].cb = tcpe_x64_cb;
-                this->trap[4].cb = tcpe_x64_cb;
-                break;
-        };
+        register_dnsapi_trap(drakvuf, &this->dnsapi_traps[3], "DnsQueryExW", trap_DnsQueryExW_cb);
+        register_dnsapi_trap(drakvuf, &this->dnsapi_traps[4], "DnsQueryExA", trap_DnsQueryExA_cb);
     }
-    else
+
+    if (this->winver >= VMI_OS_WINDOWS_8)
     {
-        this->trap[0].cb = tcpe_x86_cb;
-        this->trap[1].cb = tcpe_x86_cb;
-        this->trap[2].cb = tcpe_x86_cb;
-        this->trap[3].cb = tcpe_x86_cb;
-        this->trap[4].cb = tcpe_x86_cb;
+        register_dnsapi_trap(drakvuf, &this->dnsapi_traps[5], "DnsQueryEx", trap_DnsQueryEx_cb);
     }
 
-    this->trap[5].cb = udpb_cb;
-    this->trap[6].cb = tcpl_cb;
+    json_object* tcpip_profile_json = json_object_from_file(c->tcpip_profile);
+    if (!tcpip_profile_json)
+    {
+        PRINT_DEBUG("Socketmon plugin fails to load rekall profile for tcpip.sys\n");
+        throw -1;
+    }
 
-    if ( !drakvuf_get_function_rva(tcpip_profile, "TcpTcbDelay", &this->trap[0].breakpoint.rva) )
-        throw -1;
-    if ( !drakvuf_get_function_rva(tcpip_profile, "TcpFinAcknowledged", &this->trap[1].breakpoint.rva) )
-        throw -1;
-    if ( !drakvuf_get_function_rva(tcpip_profile, "TcpDisconnectTcb", &this->trap[2].breakpoint.rva) )
-        throw -1;
-    if ( !drakvuf_get_function_rva(tcpip_profile, "TcpShutdownTcb", &this->trap[3].breakpoint.rva) )
-        throw -1;
-    if ( !drakvuf_get_function_rva(tcpip_profile, "TcpSetSockOptTcb", &this->trap[4].breakpoint.rva) )
-        throw -1;
-    if ( !drakvuf_get_function_rva(tcpip_profile, "UdpSetSockOptEndpoint", &this->trap[5].breakpoint.rva) )
-        throw -1;
-    if ( !drakvuf_get_function_rva(tcpip_profile, "TcpCreateListenerWorkQueueRoutine", &this->trap[6].breakpoint.rva) )
-        throw -1;
+    event_response_t(*tcpe_cb)( drakvuf_t drakvuf, drakvuf_trap_info_t* info ) =
+        ((pm == VMI_PM_IA32E) ?
+         ((winver == VMI_OS_WINDOWS_10) ?
+          tcpe_win10_x64_cb :
+          tcpe_x64_cb) :
+         tcpe_x86_cb);
 
-    if ( !drakvuf_add_trap(drakvuf, &this->trap[0]) )
-        throw -1;
-    if ( !drakvuf_add_trap(drakvuf, &this->trap[1]) )
-        throw -1;
-    if ( !drakvuf_add_trap(drakvuf, &this->trap[2]) )
-        throw -1;
-    if ( !drakvuf_add_trap(drakvuf, &this->trap[3]) )
-        throw -1;
-    if ( !drakvuf_add_trap(drakvuf, &this->trap[4]) )
-        throw -1;
-    if ( !drakvuf_add_trap(drakvuf, &this->trap[5]) )
-        throw -1;
-    if ( !drakvuf_add_trap(drakvuf, &this->trap[6]) )
-        throw -1;
+    assert(sizeof(tcpip_traps) / sizeof(tcpip_traps[0]) > 6);
+    register_tcpip_trap(drakvuf, tcpip_profile_json, "TcpTcbDelay", &this->tcpip_traps[0], tcpe_cb);
+    register_tcpip_trap(drakvuf, tcpip_profile_json, "TcpFinAcknowledged", &this->tcpip_traps[1], tcpe_cb);
+    register_tcpip_trap(drakvuf, tcpip_profile_json,  "TcpDisconnectTcb", &this->tcpip_traps[2], tcpe_cb);
+    register_tcpip_trap(drakvuf, tcpip_profile_json, "TcpShutdownTcb", &this->tcpip_traps[3], tcpe_cb);
+    register_tcpip_trap(drakvuf, tcpip_profile_json, "TcpSetSockOptTcb", &this->tcpip_traps[4], tcpe_cb);
+    register_tcpip_trap(drakvuf, tcpip_profile_json, "UdpSetSockOptEndpoint", &this->tcpip_traps[5], udpb_cb);
+    register_tcpip_trap(drakvuf, tcpip_profile_json, "TcpCreateListenerWorkQueueRoutine", &this->tcpip_traps[6], tcpl_cb);
+
+    json_object_put(tcpip_profile_json);
+
+    PRINT_DEBUG("[SOCKETMON] Socketmon constructor end.\n");
 }
 
 socketmon::~socketmon()

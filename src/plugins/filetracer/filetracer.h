@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -111,19 +111,18 @@
 class filetracer: public plugin
 {
 public:
-    page_mode_t pm;
     output_format_t format;
 
     addr_t objattr_name;
     addr_t objattr_root;
+    addr_t objattr_attr;
     addr_t newfile_name_offset;
     addr_t newfile_name_length_offset;
     addr_t newfile_root_offset;
-    addr_t file_object_filename, object_header_body;
 
-    drakvuf_trap_t trap[10] =
+    drakvuf_trap_t trap[7] =
     {
-        [0 ... 9] = {
+        [0 ... 6] = {
             .breakpoint.lookup_type = LOOKUP_PID,
             .breakpoint.pid = 4,
             .breakpoint.addr_type = ADDR_RVA,

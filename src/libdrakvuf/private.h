@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -120,13 +120,19 @@
 #include "os.h"
 #include "../xen_helper/xen_helper.h"
 
+#include <sys/poll.h>
+
+
 #ifdef DRAKVUF_DEBUG
 
 extern bool verbose;
 
 #define PRINT_DEBUG(...) \
     do { \
-        if(verbose) fprintf (stderr, __VA_ARGS__); \
+        if(verbose) { \
+            eprint_current_time(); \
+            fprintf (stderr, __VA_ARGS__); \
+        }\
     } while (0)
 
 #else
@@ -136,11 +142,21 @@ extern bool verbose;
 
 #define UNUSED(x) (void)(x)
 
+struct fd_info
+{
+    int fd;
+    event_cb_t event_cb;
+    void* data;
+};
+typedef struct fd_info* fd_info_t;
+
+
 struct drakvuf
 {
     char* dom_name;
     domid_t domID;
     char* rekall_profile;
+    json_object* rekall_profile_json;
     os_t os;
 
     xen_interface_t* xen;
@@ -159,6 +175,7 @@ struct drakvuf
     vmi_event_t debug_event;
     vmi_event_t cpuid_event;
     vmi_event_t* step_event[16];
+    drakvuf_trap_t guard0;
 
     size_t* offsets;
     size_t* sizes;
@@ -177,6 +194,8 @@ struct drakvuf
     xen_pfn_t max_gpfn;
     addr_t kernbase;
     addr_t kdtb;
+
+    int address_width;
 
     x86_registers_t* regs[16]; // vCPU specific registers recorded during the last event
     addr_t kpcr[16]; // vCPU specific kpcr recorded on mov-to-cr3
@@ -197,6 +216,11 @@ struct drakvuf
     // val: struct memaccess
 
     GSList* cr0, *cr3, *cr4, *debug, *cpuid;
+
+    GSList* event_fd_info;     // the list of registered event FDs
+    struct pollfd* event_fds;  // auto-generated pollfd for poll()
+    int event_fd_cnt;          // auto-generated for poll()
+    fd_info_t fd_info_lookup;  // auto-generated for fast drakvuf_loop lookups
 };
 
 struct breakpoint
@@ -252,7 +276,8 @@ struct memcb_pass
 void drakvuf_force_resume (drakvuf_t drakvuf);
 
 char* drakvuf_get_current_process_name(drakvuf_t drakvuf,
-                                       uint64_t vcpu_id);
+                                       uint64_t vcpu_id,
+                                       bool fullpath);
 
 int64_t drakvuf_get_current_process_userid(drakvuf_t drakvuf,
         uint64_t vcpu_id);

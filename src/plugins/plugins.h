@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2016 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -116,18 +116,16 @@
 /* Plugin-specific configuration input */
 struct filedelete_config
 {
-    const char* rekall_profile;
     const char* dump_folder;
     bool dump_modified_files;
+    bool filedelete_use_injector;
 };
 struct socketmon_config
 {
-    const char* rekall_profile;
     const char* tcpip_profile;
 };
 struct syscalls_config
 {
-    const char* rekall_profile;
     const char* syscalls_filter_file;
 };
 
@@ -143,10 +141,13 @@ typedef enum drakvuf_plugin
     PLUGIN_EXMON,
     PLUGIN_SSDTMON,
     PLUGIN_DEBUGMON,
+    PLUGIN_DELAYMON,
     PLUGIN_CPUIDMON,
     PLUGIN_SOCKETMON,
     PLUGIN_REGMON,
     PLUGIN_PROCMON,
+    PLUGIN_BSODMON,
+    PLUGIN_CRASHMON,
     __DRAKVUF_PLUGIN_LIST_MAX
 } drakvuf_plugin_t;
 
@@ -160,10 +161,13 @@ static const char* drakvuf_plugin_names[] =
     [PLUGIN_EXMON] = "exmon",
     [PLUGIN_SSDTMON] = "ssdtmon",
     [PLUGIN_DEBUGMON] = "debugmon",
+    [PLUGIN_DELAYMON] = "delaymon",
     [PLUGIN_CPUIDMON] = "cpuidmon",
     [PLUGIN_SOCKETMON] = "socketmon",
     [PLUGIN_REGMON] = "regmon",
     [PLUGIN_PROCMON] = "procmon",
+    [PLUGIN_BSODMON] = "bsodmon",
+    [PLUGIN_CRASHMON] = "crashmon",
 };
 
 static const bool drakvuf_plugin_os_support[__DRAKVUF_PLUGIN_LIST_MAX][VMI_OS_WINDOWS+1] =
@@ -176,16 +180,19 @@ static const bool drakvuf_plugin_os_support[__DRAKVUF_PLUGIN_LIST_MAX][VMI_OS_WI
     [PLUGIN_EXMON]      = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
     [PLUGIN_SSDTMON]    = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
     [PLUGIN_DEBUGMON]   = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 1 },
+    [PLUGIN_DELAYMON]   = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
     [PLUGIN_CPUIDMON]   = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 1 },
     [PLUGIN_SOCKETMON]  = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
     [PLUGIN_REGMON]     = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
     [PLUGIN_PROCMON]    = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
+    [PLUGIN_BSODMON]    = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
+    [PLUGIN_CRASHMON]   = { [VMI_OS_WINDOWS] = 1, [VMI_OS_LINUX] = 0 },
 };
 
 class plugin
 {
 public:
-    virtual ~plugin() {};
+    virtual ~plugin() = default;
 };
 
 class drakvuf_plugins
@@ -194,7 +201,7 @@ private:
     drakvuf_t drakvuf;
     output_format_t output;
     os_t os;
-    plugin* plugins[__DRAKVUF_PLUGIN_LIST_MAX] = { [0 ... __DRAKVUF_PLUGIN_LIST_MAX-1] = NULL };
+    plugin* plugins[__DRAKVUF_PLUGIN_LIST_MAX] = { [0 ... __DRAKVUF_PLUGIN_LIST_MAX-1] = nullptr };
 
 public:
     drakvuf_plugins(drakvuf_t drakvuf, output_format_t output, os_t os);
@@ -203,5 +210,20 @@ public:
 };
 
 /***************************************************************************/
+
+struct vmi_lock_guard
+{
+    vmi_lock_guard(drakvuf_t drakvuf_) : drakvuf{ drakvuf_ }, vmi{ drakvuf_lock_and_get_vmi(drakvuf_) }
+    {
+    }
+
+    ~vmi_lock_guard()
+    {
+        drakvuf_release_vmi(drakvuf);
+    }
+
+    drakvuf_t drakvuf;
+    vmi_instance_t vmi;
+};
 
 #endif

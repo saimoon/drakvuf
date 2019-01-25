@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2016 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -102,6 +102,7 @@
  *                                                                         *
  ***************************************************************************/
 
+#define XC_WANT_COMPAT_EVTCHN_API 1
 #define XC_WANT_COMPAT_MAP_FOREIGN_API 1
 
 #include <stdlib.h>
@@ -143,6 +144,14 @@ bool xen_init_interface(xen_interface_t** xen)
         goto err;
     }
 
+    (*xen)->evtchn = xc_evtchn_open(NULL, 0);
+    if (!(*xen)->evtchn)
+    {
+        printf("xc_evtchn_open() could not build event channel!\n");
+        goto err;
+    }
+    (*xen)->evtchn_fd = xc_evtchn_fd((*xen)->evtchn);
+
     return 1;
 
 err:
@@ -162,18 +171,24 @@ void xen_free_interface(xen_interface_t* xen)
         //if (xen->xsh) xs_close(xen->xsh);
         if (xen->xc)
             xc_interface_close(xen->xc);
-        free(xen);
+        if (xen->evtchn)
+            xc_evtchn_close(xen->evtchn);
+        g_free(xen);
     }
 }
 
 int get_dom_info(xen_interface_t* xen, const char* input, domid_t* domID,
                  char** name)
 {
-
-    uint32_t _domID = ~0U;
+    uint32_t _domID;
     char* _name = NULL;
+    char* endptr = NULL;
 
-    sscanf(input, "%u", &_domID);
+    errno = 0;
+    _domID = strtol(input, &endptr, 10);
+
+    if (errno || !endptr || (endptr && *endptr))
+        _domID = ~0U;
 
     if (_domID == ~0U)
     {

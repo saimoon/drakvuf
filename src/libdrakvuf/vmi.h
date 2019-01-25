@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2016 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -119,12 +119,13 @@
       g_hash_table_iter_init(&i, table); \
       while(g_hash_table_iter_next(&i,(void**)&key,(void**)&val))
 
-bool init_vmi(drakvuf_t drakvuf);
+bool init_vmi(drakvuf_t drakvuf, bool libvmi_conf);
 void close_vmi(drakvuf_t drakvuf);
 
 event_response_t trap_guard(vmi_instance_t vmi, vmi_event_t* event);
 event_response_t vmi_reset_trap(vmi_instance_t vmi, vmi_event_t* event);
 event_response_t vmi_save_and_reset_trap(vmi_instance_t vmi, vmi_event_t* event);
+void drakvuf_vmi_event_callback (int fd, void* data);
 
 bool inject_trap(drakvuf_t drakvuf,
                  drakvuf_trap_t* trap,

@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2016 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -113,19 +113,83 @@ extern "C" {
 
 #include <libdrakvuf/libdrakvuf.h>
 
+typedef struct injector* injector_t;
+
 typedef enum
 {
     INJECT_METHOD_CREATEPROC,
     INJECT_METHOD_SHELLEXEC,
+    INJECT_METHOD_SHELLCODE,
+    INJECT_METHOD_DOPP,
     __INJECT_METHOD_MAX
-} injection_method_t;
+}
+injection_method_t;
+
+typedef enum
+{
+    ARGUMENT_STRING,
+    ARGUMENT_STRUCT,
+    ARGUMENT_INT,
+    __ARGUMENT_MAX
+} argument_type_t;
+
+typedef enum
+{
+    STATUS_NULL,
+    STATUS_ALLOC_OK,
+    STATUS_PHYS_ALLOC_OK,
+    STATUS_WRITE_OK,
+    STATUS_EXEC_OK,
+    STATUS_BP_HIT,
+    STATUS_CREATE_OK,
+    STATUS_RESUME_OK,
+    __STATUS_MAX
+} status_type_t;
+
+struct argument
+{
+    uint32_t type;
+    uint32_t size;
+    uint64_t data_on_stack;
+    void* data;
+};
+
+
+void init_argument(struct argument* arg,
+                   argument_type_t type,
+                   size_t size,
+                   void* data);
+
+void init_int_argument(struct argument* arg,
+                       uint64_t value);
+
+void init_unicode_argument(struct argument* arg,
+                           unicode_string_t* us);
+
+#define init_struct_argument(arg, sv) \
+    init_argument((arg), ARGUMENT_STRUCT, sizeof((sv)), (void*)&(sv))
+
+bool setup_stack(drakvuf_t drakvuf,
+                 drakvuf_trap_info_t* info,
+                 struct argument args[],
+                 int nb_args);
+
+bool setup_stack_locked(drakvuf_t drakvuf,
+                        vmi_instance_t vmi,
+                        drakvuf_trap_info_t* info,
+                        struct argument args[],
+                        int nb_args);
 
 int injector_start_app(drakvuf_t drakvuf,
                        vmi_pid_t pid,
                        uint32_t tid, // optional, if tid=0 the first thread that gets scheduled is used
                        const char* app,
+                       const char* cwd,
                        injection_method_t method,
-                       output_format_t format);
+                       output_format_t format,
+                       const char* binary_path,     // if -m = doppelganging
+                       const char* target_process,  // if -m = doppelganging
+                       bool break_loop_on_detection);
 
 #pragma GCC visibility pop
 

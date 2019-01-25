@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -119,17 +119,30 @@ void drakvuf_close(drakvuf_t drakvuf, const bool pause)
         return;
 
     if (drakvuf->vmi)
-    {
         close_vmi(drakvuf);
+
+    g_free(drakvuf->event_fds);
+    g_free(drakvuf->fd_info_lookup);
+    GSList* loop = drakvuf->event_fd_info;
+    while (loop)
+    {
+        g_free(loop->data);
+        loop = loop->next;
     }
+    g_slist_free(drakvuf->event_fd_info);
 
     if (drakvuf->xen)
     {
-
         if ( !pause )
             drakvuf_force_resume(drakvuf);
 
         xen_free_interface(drakvuf->xen);
+    }
+
+    if (drakvuf->rekall_profile_json)
+    {
+        json_object_put(drakvuf->rekall_profile_json);
+        drakvuf->rekall_profile_json = NULL;
     }
 
     g_free(drakvuf->offsets);
@@ -140,7 +153,7 @@ void drakvuf_close(drakvuf_t drakvuf, const bool pause)
     g_free(drakvuf);
 }
 
-bool drakvuf_init(drakvuf_t* drakvuf, const char* domain, const char* rekall_profile, bool _verbose)
+bool drakvuf_init(drakvuf_t* drakvuf, const char* domain, const char* rekall_profile, bool _verbose, bool libvmi_conf)
 {
 
     if ( !domain || !rekall_profile )
@@ -151,13 +164,19 @@ bool drakvuf_init(drakvuf_t* drakvuf, const char* domain, const char* rekall_pro
 #endif
 
     *drakvuf = g_malloc0(sizeof(struct drakvuf));
+
+    (*drakvuf)->rekall_profile_json = json_object_from_file(rekall_profile);
     (*drakvuf)->rekall_profile = g_strdup(rekall_profile);
-    (*drakvuf)->os = rekall_get_os_type(rekall_profile);
+    (*drakvuf)->os = rekall_get_os_type((*drakvuf)->rekall_profile_json);
 
     g_mutex_init(&(*drakvuf)->vmi_lock);
 
     if ( !xen_init_interface(&(*drakvuf)->xen) )
         goto err;
+
+    /* register the main VMI event callback */
+    drakvuf_event_fd_add(*drakvuf, (*drakvuf)->xen->evtchn_fd, drakvuf_vmi_event_callback, drakvuf);
+    PRINT_DEBUG("drakvuf_init: adding event_fd done\n");
 
     get_dom_info((*drakvuf)->xen, domain, &(*drakvuf)->domID, &(*drakvuf)->dom_name);
     domid_t test = ~0;
@@ -166,11 +185,8 @@ bool drakvuf_init(drakvuf_t* drakvuf, const char* domain, const char* rekall_pro
 
     drakvuf_pause(*drakvuf);
 
-    if (!init_vmi(*drakvuf))
-    {
-        drakvuf_resume(*drakvuf);
+    if (!init_vmi(*drakvuf, libvmi_conf))
         goto err;
-    }
 
     switch ((*drakvuf)->os)
     {
@@ -203,6 +219,11 @@ err:
 void drakvuf_interrupt(drakvuf_t drakvuf, int sig)
 {
     drakvuf->interrupted = sig;
+}
+
+int drakvuf_is_interrupted(drakvuf_t drakvuf)
+{
+    return drakvuf->interrupted;
 }
 
 bool inject_trap_breakpoint(drakvuf_t drakvuf, drakvuf_trap_t* trap)
@@ -429,34 +450,85 @@ void drakvuf_force_resume (drakvuf_t drakvuf)
     xen_force_resume(drakvuf->xen, drakvuf->domID);
 }
 
-bool drakvuf_get_struct_size(const char* rekall_profile,
+bool rekall_get_struct_size( json_object* rekall_profile_json,
                              const char* struct_name,
                              size_t* size)
 {
     return rekall_lookup(
-               rekall_profile,
+               rekall_profile_json,
                struct_name,
                NULL,
                NULL,
                size);
 }
+bool drakvuf_get_struct_size(drakvuf_t drakvuf,
+                             const char* struct_name,
+                             size_t* size)
+{
+    return rekall_get_struct_size(
+               drakvuf->rekall_profile_json,
+               struct_name,
+               size);
+}
 
-bool drakvuf_get_struct_member_rva(const char* rekall_profile,
+bool rekall_get_struct_member_rva( json_object* rekall_profile_json,
                                    const char* struct_name,
                                    const char* symbol,
                                    addr_t* rva)
 {
     return rekall_lookup(
-               rekall_profile,
+               rekall_profile_json,
                struct_name,
                symbol,
                rva,
                NULL);
 }
+bool drakvuf_get_struct_member_rva(drakvuf_t drakvuf,
+                                   const char* struct_name,
+                                   const char* symbol,
+                                   addr_t* rva)
+{
+    return rekall_get_struct_member_rva(
+               drakvuf->rekall_profile_json,
+               struct_name,
+               symbol,
+               rva);
+}
+
+bool rekall_get_struct_members_array_rva(
+    json_object* rekall_profile_json,
+    const char* struct_name_symbol_array[][2],
+    addr_t array_size,
+    addr_t* rva)
+{
+    return rekall_lookup_array(
+               rekall_profile_json,
+               struct_name_symbol_array,
+               array_size,
+               rva,
+               NULL);
+}
+bool drakvuf_get_struct_members_array_rva(
+    drakvuf_t drakvuf,
+    const char* struct_name_symbol_array[][2],
+    addr_t array_size,
+    addr_t* rva)
+{
+    return rekall_get_struct_members_array_rva(
+               drakvuf->rekall_profile_json,
+               struct_name_symbol_array,
+               array_size,
+               rva);
+}
 
 const char* drakvuf_get_rekall_profile(drakvuf_t drakvuf)
 {
     return drakvuf->rekall_profile;
+}
+
+json_object* drakvuf_get_rekall_profile_json(drakvuf_t drakvuf)
+{
+    return drakvuf->rekall_profile_json;
 }
 
 addr_t drakvuf_get_kernel_base(drakvuf_t drakvuf)
@@ -467,6 +539,16 @@ addr_t drakvuf_get_kernel_base(drakvuf_t drakvuf)
 os_t drakvuf_get_os_type(drakvuf_t drakvuf)
 {
     return drakvuf->os;
+}
+
+page_mode_t drakvuf_get_page_mode(drakvuf_t drakvuf)
+{
+    return drakvuf->pm;
+}
+
+int drakvuf_get_address_width(drakvuf_t drakvuf)
+{
+    return drakvuf->address_width;
 }
 
 static unicode_string_t* drakvuf_read_unicode_common(vmi_instance_t vmi, const access_context_t* ctx)
@@ -519,4 +601,162 @@ unicode_string_t* drakvuf_read_unicode_va(vmi_instance_t vmi, addr_t vaddr, vmi_
     };
 
     return drakvuf_read_unicode_common(vmi, &ctx);
+}
+
+size_t drakvuf_wchar_string_length(vmi_instance_t vmi, const access_context_t* ctx)
+{
+    access_context_t mutable_ctx = *ctx;
+
+    size_t str_len = 0;
+    uint16_t wchar = 1;
+    for ( ; wchar ; str_len += 2 )
+    {
+        mutable_ctx.addr = ctx->addr + str_len;
+        if ( VMI_FAILURE == vmi_read_16(vmi, &mutable_ctx, &wchar) )
+        {
+            str_len = 0;
+            goto end;
+        }
+    }
+
+end:
+    return (str_len / 2);
+}
+
+unicode_string_t* drakvuf_read_wchar_array(vmi_instance_t vmi, const access_context_t* ctx, size_t length)
+{
+    unicode_string_t us;
+
+    us.length = length * 2;
+    us.contents = (uint8_t*)g_malloc0(sizeof(uint8_t) * (length * 2 + 2));
+
+    if ( !us.contents )
+        return NULL;
+
+    if ( VMI_FAILURE == vmi_read(vmi, ctx, us.length, us.contents, NULL) )
+    {
+        g_free(us.contents);
+        return NULL;
+    }
+
+    // end with NUL symbol
+    us.contents[us.length] = 0;
+    us.contents[us.length + 1] = 0;
+    us.encoding = "UTF-16";
+
+    unicode_string_t* out = (unicode_string_t*)g_malloc0(sizeof(unicode_string_t));
+
+    if ( !out )
+    {
+        g_free(us.contents);
+        return NULL;
+    }
+
+    status_t rc = vmi_convert_str_encoding(&us, out, "UTF-8");
+    g_free(us.contents);
+
+    if (VMI_SUCCESS != rc)
+    {
+        if (out->contents)
+            free(out->contents);
+        memset((void*) out, 0, sizeof(*out));
+        free(out);
+        return NULL;
+    }
+
+    return out;
+}
+
+unicode_string_t* drakvuf_read_wchar_string(vmi_instance_t vmi, const access_context_t* ctx)
+{
+    size_t strlen = drakvuf_wchar_string_length(vmi, ctx);
+    return drakvuf_read_wchar_array(vmi, ctx, strlen);
+}
+
+static void drakvuf_event_fd_generate(drakvuf_t drakvuf)
+{
+    /* event_fds and fd_info_lookup are both generated based off of
+       drakvuf->event_fd_info */
+    if (drakvuf->event_fds != NULL)
+    {
+        PRINT_DEBUG("freeing existing event_fds\n");
+        g_free(drakvuf->event_fds);
+    }
+    if (drakvuf->fd_info_lookup != NULL)
+    {
+        PRINT_DEBUG("freeing existing fd_info_lookup\n");
+        g_free(drakvuf->fd_info_lookup);
+    }
+
+    /* allocate and populate new pollfd array and new fd_info_lookup array */
+    drakvuf->event_fds = (struct pollfd*) g_malloc0(sizeof(struct pollfd) * \
+                         (g_slist_length(drakvuf->event_fd_info)));
+
+    drakvuf->fd_info_lookup = (fd_info_t) g_malloc0(sizeof(struct fd_info) * \
+                              (g_slist_length(drakvuf->event_fd_info)));
+
+    int i = 0;
+    GSList* loop = drakvuf->event_fd_info;
+    while (loop)
+    {
+        fd_info_t fd_info = (fd_info_t) loop->data;
+        drakvuf->event_fds[i].fd = fd_info->fd;
+        drakvuf->event_fds[i].events = POLLIN | POLLERR;
+        PRINT_DEBUG("new event_fd i=%d for fd=%d\n", i, fd_info->fd);
+
+        drakvuf->fd_info_lookup[i].fd = fd_info->fd;
+        drakvuf->fd_info_lookup[i].event_cb = fd_info->event_cb;
+        drakvuf->fd_info_lookup[i].data = fd_info->data;
+        PRINT_DEBUG("new fd_info_lookup i=%d for fd=%d\n", i, fd_info->fd);
+
+        loop = loop->next;
+        i++;
+    }
+
+    return;
+}
+
+int drakvuf_event_fd_remove(drakvuf_t drakvuf, int fd)
+{
+    PRINT_DEBUG("drakvuf_event_fd_remove fd=%d\n", fd);
+    int i = 0;
+    GSList* loop = drakvuf->event_fd_info;
+    while (loop)
+    {
+        fd_info_t fd_info = (fd_info_t) loop->data;
+        if (fd_info->fd == fd)
+        {
+            PRINT_DEBUG("found match at index=%d\n", i);
+            drakvuf->event_fd_info = g_slist_remove(drakvuf->event_fd_info, fd_info);
+
+            drakvuf->event_fd_cnt = g_slist_length(drakvuf->event_fd_info);
+            PRINT_DEBUG("regenerating event_fds and fd_info_lookup...\n");
+
+            drakvuf_event_fd_generate(drakvuf);
+            return 1;
+        }
+        loop = loop->next;
+        i++;
+    }
+    PRINT_DEBUG("drakvuf_event_fd_remove could not find fd!\n");
+    return 0;
+}
+
+int drakvuf_event_fd_add(drakvuf_t drakvuf, int fd, event_cb_t event_cb, void* data)
+{
+    PRINT_DEBUG("drakvuf_event_fd_add fd=%d\n", fd);
+
+    /* add new fd_info */
+    fd_info_t new_fd_info = (fd_info_t) g_malloc0(sizeof(struct fd_info));
+    new_fd_info->fd = fd;
+    new_fd_info->event_cb = event_cb;
+    new_fd_info->data = data;
+    /* the event_fd_info list is the authoritive data source used to
+       create the event_fds and fd_info_lookup data structures */
+    drakvuf->event_fd_info = g_slist_append(drakvuf->event_fd_info, new_fd_info);
+    drakvuf->event_fd_cnt = g_slist_length(drakvuf->event_fd_info);
+    PRINT_DEBUG("size of list=%d\n", drakvuf->event_fd_cnt);
+    PRINT_DEBUG("regenerating event_fds and fd_info_lookup...\n");
+    drakvuf_event_fd_generate(drakvuf);
+    return 1;
 }

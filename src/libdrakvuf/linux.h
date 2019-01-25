@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -112,11 +112,11 @@ addr_t linux_get_current_thread(drakvuf_t drakvuf, uint64_t vcpu_id);
 
 addr_t linux_get_current_process(drakvuf_t drakvuf, uint64_t vcpu_id);
 
-char* linux_get_process_name(drakvuf_t drakvuf, addr_t process_base);
+char* linux_get_process_name(drakvuf_t drakvuf, addr_t process_base, bool fullpath);
 
 status_t linux_get_process_pid(drakvuf_t drakvuf, addr_t process_base, vmi_pid_t* pid);
 
-char* linux_get_current_process_name(drakvuf_t drakvuf, uint64_t vcpu_id);
+char* linux_get_current_process_name(drakvuf_t drakvuf, uint64_t vcpu_id, bool fullpath);
 
 int64_t linux_get_process_userid(drakvuf_t drakvuf, addr_t process_base);
 

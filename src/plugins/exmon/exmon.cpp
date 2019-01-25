@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -321,9 +321,7 @@ done:
 
 exmon::exmon(drakvuf_t drakvuf, const void* config, output_format_t output)
 {
-    const char* rekall_profile = (const char*)config;
-
-    if ( !drakvuf_get_function_rva(rekall_profile, "KiDispatchException", &this->trap.breakpoint.rva) )
+    if ( !drakvuf_get_function_rva(drakvuf, "KiDispatchException", &this->trap.breakpoint.rva) )
         throw -1;
 
     this->trap.cb = cb;
@@ -331,15 +329,13 @@ exmon::exmon(drakvuf_t drakvuf, const void* config, output_format_t output)
     this->offsets = (addr_t*)g_malloc0(__OFFSET_MAX*sizeof(addr_t));
     this->ktrap_frame_size = 0;
 
-    vmi_instance_t vmi = drakvuf_lock_and_get_vmi(drakvuf);
-    this->pm = vmi_get_page_mode(vmi, 0);
-    drakvuf_release_vmi(drakvuf);
+    this->pm = drakvuf_get_page_mode(drakvuf);
 
     int i;
     for (i=0; i<__OFFSET_MAX; i++)
-        drakvuf_get_struct_member_rva(rekall_profile, offset_names[i][0], offset_names[i][1], &this->offsets[i]);
+        drakvuf_get_struct_member_rva(drakvuf, offset_names[i][0], offset_names[i][1], &this->offsets[i]);
 
-    if ( !drakvuf_get_struct_size(rekall_profile, "_KTRAP_FRAME", &this->ktrap_frame_size) )
+    if ( !drakvuf_get_struct_size(drakvuf, "_KTRAP_FRAME", &this->ktrap_frame_size) )
     {
         g_free(this->offsets);
         throw -1;

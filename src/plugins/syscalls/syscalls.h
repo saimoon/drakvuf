@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -119,7 +119,7 @@ public:
     uint8_t reg_size;
     output_format_t format;
     os_t os;
-    addr_t file_object_filename, object_header_body;
+
     syscalls(drakvuf_t drakvuf, const void* config, output_format_t output);
     ~syscalls();
 };

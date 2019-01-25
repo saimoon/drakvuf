@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2016 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -120,8 +120,6 @@
 #include "win-exports.h"
 #include "win-offsets.h"
 
-#define MAX_HEADER_SIZE 1024
-
 // search for the given module+symbol in the given module list
 static status_t
 modlist_sym2va(drakvuf_t drakvuf, addr_t list_head, access_context_t* ctx,
@@ -149,43 +147,123 @@ modlist_sym2va(drakvuf_t drakvuf, addr_t list_head, access_context_t* ctx,
 
         ctx->addr = next_module + drakvuf->offsets[LDR_DATA_TABLE_ENTRY_BASEDLLNAME];
         unicode_string_t* us = vmi_read_unicode_str(vmi, ctx);
-        unicode_string_t out = { .contents = NULL };
 
-        if (us && VMI_SUCCESS == vmi_convert_str_encoding(us, &out, "UTF-8"))
+        if ( us )
         {
+            unicode_string_t out = { .contents = NULL };
 
-            PRINT_DEBUG("Found module %s\n", out.contents);
-
-            if (!strcasecmp((char*) out.contents, mod_name))
+            if ( VMI_SUCCESS == vmi_convert_str_encoding(us, &out, "UTF-8"))
             {
+                PRINT_DEBUG("Found module %s\n", out.contents);
 
-                addr_t dllbase;
+                if (!strcasecmp((char*) out.contents, mod_name))
+                {
+                    status_t ret ;
+                    addr_t dllbase;
 
-                ctx->addr = next_module + drakvuf->offsets[LDR_DATA_TABLE_ENTRY_DLLBASE];
-                if ( VMI_FAILURE == vmi_read_addr(vmi, ctx, &dllbase) )
-                    return VMI_FAILURE;
+                    ctx->addr = next_module + drakvuf->offsets[LDR_DATA_TABLE_ENTRY_DLLBASE];
+                    ret = vmi_read_addr(vmi, ctx, &dllbase);
 
-                ctx->addr = dllbase;
-                if ( VMI_FAILURE == vmi_translate_sym2v(vmi, ctx, (char*) symbol, va) )
-                    return VMI_FAILURE;
+                    if ( ret == VMI_SUCCESS )
+                    {
+                        ctx->addr = dllbase;
 
-                PRINT_DEBUG("\t%s @ 0x%lx\n", symbol, *va);
+                        ret = vmi_translate_sym2v(vmi, ctx, (char*) symbol, va);
+                        if ( ret == VMI_SUCCESS )
+                            PRINT_DEBUG("\t%s @ 0x%lx\n", symbol, *va);
+                    }
 
-                free(out.contents);
-                vmi_free_unicode_str(us);
-                return VMI_SUCCESS;
+                    g_free(out.contents);
+                    vmi_free_unicode_str(us);
+                    return ret ;
+                }
+
+                g_free(out.contents);
             }
 
-            free(out.contents);
-        }
-
-        if (us)
             vmi_free_unicode_str(us);
+        }
 
         next_module = tmp_next;
     }
 
     return VMI_FAILURE;
+}
+
+addr_t ksym2va(drakvuf_t drakvuf, vmi_pid_t pid, const char* proc_name, const char* mod_name, addr_t rva)
+{
+    addr_t module_list = 0;
+
+    if (4 == pid || !strcmp(proc_name, "System"))
+    {
+        if (VMI_FAILURE == vmi_read_addr_ksym(drakvuf->vmi, "PsLoadedModuleList", &module_list))
+            return 0;
+    }
+    else
+    {
+        /* Process library */
+        addr_t process_base;
+
+        if ( !drakvuf_find_process(drakvuf, pid, proc_name, &process_base) )
+            return 0;
+
+        if (pid == -1)
+        {
+            if ( drakvuf_get_process_pid(drakvuf, process_base, &pid) == VMI_FAILURE )
+                return 0;
+        }
+
+        if ( !drakvuf_get_module_list(drakvuf, process_base, &module_list) )
+            return 0;
+    }
+
+    vmi_instance_t vmi = drakvuf->vmi;
+    addr_t next_module = module_list;
+    addr_t tmp_next;
+    addr_t dllbase;
+
+    while (1)
+    {
+
+        if ( VMI_FAILURE == vmi_read_addr_va(vmi, next_module, pid, &tmp_next) )
+            break;
+
+        if (module_list == tmp_next)
+            break;
+
+        if ( VMI_FAILURE == vmi_read_addr_va(vmi, next_module + drakvuf->offsets[LDR_DATA_TABLE_ENTRY_DLLBASE], pid, &dllbase) )
+            break;
+
+        if (!dllbase)
+            break;
+
+        unicode_string_t* us = vmi_read_unicode_str_va(vmi, next_module + drakvuf->offsets[LDR_DATA_TABLE_ENTRY_BASEDLLNAME], pid);
+
+        if (us)
+        {
+            unicode_string_t out = { .contents = NULL };
+            addr_t ret_addr = 0 ;
+
+            if (VMI_SUCCESS == vmi_convert_str_encoding(us, &out, "UTF-8") )
+            {
+                PRINT_DEBUG("\t%s @ 0x%" PRIx64 "\n", out.contents, dllbase);
+
+                if ( !strcmp((char*)out.contents, mod_name) )
+                    ret_addr =  dllbase + rva;
+
+                g_free(out.contents);
+            }
+
+            vmi_free_unicode_str(us);
+
+            if ( ret_addr )
+                return ret_addr;
+        }
+
+        next_module = tmp_next;
+    }
+
+    return 0;
 }
 
 addr_t eprocess_sym2va (drakvuf_t drakvuf, addr_t eprocess_base, const char* mod_name, const char* symbol)
@@ -214,197 +292,4 @@ addr_t eprocess_sym2va (drakvuf_t drakvuf, addr_t eprocess_base, const char* mod
 
     modlist_sym2va(drakvuf, inloadorder, &ctx, mod_name, symbol, &ret);
     return ret;
-}
-
-addr_t sym2va(drakvuf_t drakvuf, vmi_pid_t target_pid, const char* mod_name, const char* symbol)
-{
-    vmi_instance_t vmi = drakvuf->vmi;
-    addr_t ret = 0, list_head, current_process, current_list_entry, next_list_entry;
-    status_t status;
-
-    size_t pid_offset, tasks_offset;
-    if ( VMI_FAILURE == vmi_get_offset(vmi, "win_pid", &pid_offset) )
-        return 0;
-    if ( VMI_FAILURE == vmi_get_offset(vmi, "win_tasks", &tasks_offset) )
-        return 0;
-
-    status = vmi_read_addr_ksym(vmi, "PsInitialSystemProcess", &current_process);
-    if ( VMI_FAILURE == status )
-        return ret;
-
-    /* walk the task list */
-    list_head = current_process + tasks_offset;
-    current_list_entry = list_head;
-
-    status = vmi_read_addr_va(vmi, current_list_entry, 0, &next_list_entry);
-    if (status == VMI_FAILURE)
-    {
-        PRINT_DEBUG("Failed to read next pointer at 0x%lx before entering loop\n", current_list_entry);
-        return ret;
-    }
-
-    do
-    {
-        current_list_entry = next_list_entry;
-        current_process = current_list_entry - tasks_offset;
-
-        /* follow the next pointer */
-
-        vmi_pid_t pid = -1;
-        status = vmi_read_32_va(vmi, current_process + pid_offset, 0, (uint32_t*)&pid);
-        if ( VMI_FAILURE == status )
-            return ret;
-
-        if (pid == target_pid)
-            return eprocess_sym2va(drakvuf, current_process, mod_name, symbol);
-
-        status = vmi_read_addr_va(vmi, current_list_entry, 0, &next_list_entry);
-        if ( VMI_FAILURE == status )
-        {
-            PRINT_DEBUG("Failed to read next pointer in loop at %lx\n", current_list_entry);
-            return ret;
-        }
-    }
-    while (next_list_entry != list_head);
-
-    return ret;
-}
-
-// search for the given module+symbol in the given module list
-static status_t
-modlist_va2sym(drakvuf_t drakvuf, addr_t list_head, addr_t va,
-               access_context_t* ctx, char** out_mod, char** out_sym)
-{
-
-    vmi_instance_t vmi = drakvuf->vmi;
-    addr_t next_module = list_head;
-
-    /* walk the module list */
-    while (1)
-    {
-
-        /* follow the next pointer */
-        addr_t tmp_next = 0;
-        ctx->addr = next_module;
-        if (VMI_FAILURE == vmi_read_addr(vmi, ctx, &tmp_next))
-            break;
-
-        /* if we are back at the list head, we are done */
-        if (list_head == tmp_next || !tmp_next)
-        {
-            break;
-        }
-
-        ctx->addr = next_module + drakvuf->offsets[LDR_DATA_TABLE_ENTRY_BASEDLLNAME];
-        unicode_string_t* us = vmi_read_unicode_str(vmi, ctx);
-        unicode_string_t out = { .contents = NULL };
-
-        if (us && VMI_SUCCESS == vmi_convert_str_encoding(us, &out, "UTF-8"))
-        {
-            addr_t dllbase;
-            ctx->addr = next_module + drakvuf->offsets[LDR_DATA_TABLE_ENTRY_DLLBASE];
-            if (VMI_FAILURE == vmi_read_addr(vmi, ctx, &dllbase))
-            {
-                free(us);
-                break;
-            }
-
-            ctx->addr = dllbase;
-            const char* sym = vmi_translate_v2sym(vmi, ctx, va);
-
-            if (sym)
-            {
-                *out_mod = g_strdup((char*)out.contents);
-                *out_sym = (char*) sym;
-                free(out.contents);
-                vmi_free_unicode_str(us);
-                return VMI_SUCCESS;
-            }
-            else
-            {
-                free(out.contents);
-            }
-        }
-
-        if (us)
-            vmi_free_unicode_str(us);
-
-        next_module = tmp_next;
-    }
-
-    return VMI_FAILURE;
-}
-
-status_t va2sym(drakvuf_t drakvuf, addr_t va, vmi_pid_t target_pid,
-                char** out_mod, char** out_sym)
-{
-
-    vmi_instance_t vmi = drakvuf->vmi;
-    addr_t list_head;
-
-    size_t pid_offset, tasks_offset;
-    if ( VMI_FAILURE == vmi_get_offset(vmi, "win_pid", &pid_offset) )
-        return VMI_FAILURE;
-    if ( VMI_FAILURE == vmi_get_offset(vmi, "win_tasks", &tasks_offset) )
-        return VMI_FAILURE;
-
-    addr_t current_process, current_list_entry, next_list_entry;
-    if ( VMI_FAILURE == vmi_read_addr_ksym(vmi, "PsInitialSystemProcess", &current_process) )
-        return VMI_FAILURE;
-
-    /* walk the task list */
-    list_head = current_process + tasks_offset;
-    current_list_entry = list_head;
-
-    if (VMI_FAILURE == vmi_read_addr_va(vmi, current_list_entry, 0, &next_list_entry))
-    {
-        PRINT_DEBUG("Failed to read next pointer at 0x%lx before entering loop\n",
-                    current_list_entry);
-        return VMI_FAILURE;
-    }
-
-    do
-    {
-        current_list_entry = next_list_entry;
-        current_process = current_list_entry - tasks_offset;
-
-        /* follow the next pointer */
-
-        addr_t peb, ldr, inloadorder;
-        vmi_pid_t pid;
-        if ( VMI_FAILURE == vmi_read_32_va(vmi, current_process + pid_offset, 0, (uint32_t*)&pid) )
-            return VMI_FAILURE;
-
-        if (pid == target_pid)
-        {
-
-            if ( VMI_FAILURE == vmi_read_addr_va(vmi, current_process + drakvuf->offsets[EPROCESS_PEB], 0, &peb) )
-                return VMI_FAILURE;
-
-            if ( VMI_FAILURE == vmi_read_addr_va(vmi, peb + drakvuf->offsets[PEB_LDR], pid, &ldr) )
-                return VMI_FAILURE;
-
-            if ( VMI_FAILURE == vmi_read_addr_va(vmi,
-                                                 ldr + drakvuf->offsets[PEB_LDR_DATA_INLOADORDERMODULELIST], pid,
-                                                 &inloadorder) )
-                return VMI_FAILURE;
-
-            access_context_t ctx =
-            {
-                .translate_mechanism = VMI_TM_PROCESS_PID,
-                .pid = pid,
-            };
-
-            return modlist_va2sym(drakvuf, inloadorder, va, &ctx, out_mod, out_sym);
-        }
-
-        if ( VMI_FAILURE  == vmi_read_addr_va(vmi, current_list_entry, 0, &next_list_entry) )
-        {
-            PRINT_DEBUG("Failed to read next pointer in loop at %lx\n", current_list_entry);
-            return VMI_FAILURE;
-        }
-    }
-    while (next_list_entry != list_head);
-
-    return VMI_FAILURE;
 }

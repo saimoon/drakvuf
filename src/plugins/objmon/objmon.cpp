@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -203,17 +203,13 @@ static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
 objmon::objmon(drakvuf_t drakvuf, const void* config, output_format_t output)
 {
-    const char* rekall_profile = (const char*)config;
-
-    if ( !drakvuf_get_function_rva(rekall_profile, "ObCreateObject", &this->trap.breakpoint.rva) )
+    if ( !drakvuf_get_function_rva(drakvuf, "ObCreateObject", &this->trap.breakpoint.rva) )
         throw -1;
-    if ( !drakvuf_get_struct_member_rva(rekall_profile, "_OBJECT_TYPE", "Key", &this->key_offset) )
+    if ( !drakvuf_get_struct_member_rva(drakvuf, "_OBJECT_TYPE", "Key", &this->key_offset) )
         throw -1;
 
     this->trap.cb = cb;
-    vmi_instance_t vmi = drakvuf_lock_and_get_vmi(drakvuf);
-    this->pm = vmi_get_page_mode(vmi, 0);
-    drakvuf_release_vmi(drakvuf);
+    this->pm = drakvuf_get_page_mode(drakvuf);
 
     this->format = output;
     if ( !drakvuf_add_trap(drakvuf, &this->trap) )

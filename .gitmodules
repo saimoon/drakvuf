@@ -6,7 +6,7 @@
 	path = libvmi
 	url = https://github.com/saimoon/libvmi
 	ignore = dirty
-[submodule "rekall"]
-	path = rekall
-	url = https://github.com/saimoon/rekall
+[submodule "drakvuf-doppelganging"]
+	path = drakvuf-doppelganging
+	url = https://github.com/tklengyel/drakvuf-doppelganging.git
 	ignore = dirty

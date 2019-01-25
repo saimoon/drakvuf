@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -113,6 +113,8 @@
 
 #include "private.h"
 #include "win-offsets.h"
+#include "win-error-codes.h"
+#include "win.h"
 
 typedef enum dispatcher_object
 {
@@ -153,6 +155,46 @@ addr_t win_get_current_process(drakvuf_t drakvuf, uint64_t vcpu_id)
     return process;
 }
 
+status_t win_get_last_error(drakvuf_t drakvuf, uint64_t vcpu_id, uint32_t* err, const char** err_str)
+{
+    if (!err || !err_str)
+        return VMI_FAILURE;
+
+    vmi_instance_t vmi = drakvuf->vmi;
+
+    addr_t eprocess = win_get_current_process(drakvuf, vcpu_id);
+    addr_t cr3 = 0;
+    vmi_pid_t pid = 0;
+    if (eprocess && VMI_SUCCESS == win_get_process_pid(drakvuf, eprocess, &pid))
+        if (VMI_SUCCESS != vmi_pid_to_dtb(vmi, pid, &cr3))
+            return VMI_FAILURE;
+
+    addr_t kthread = win_get_current_thread(drakvuf, vcpu_id);
+    if (!kthread)
+        return VMI_FAILURE;
+
+    addr_t teb = 0;
+    if (VMI_SUCCESS != vmi_read_addr_va(vmi, kthread + drakvuf->offsets[KTHREAD_TEB], 0, &teb))
+        return VMI_FAILURE;
+
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = cr3,
+        .addr = teb + drakvuf->offsets[TEB_LASTERRORVALUE],
+    };
+
+    if (VMI_SUCCESS != vmi_read_32(vmi, &ctx, err))
+        return VMI_FAILURE;
+
+    if (*err >= __WIN_ERROR_CODES_MAX)
+        return VMI_FAILURE;
+
+    *err_str = win_error_code_names[*err];
+
+    return VMI_SUCCESS;
+}
+
 static unicode_string_t* win_get_process_full_name(drakvuf_t drakvuf, addr_t eprocess_base)
 {
     addr_t image_file_name_addr;
@@ -170,23 +212,58 @@ static unicode_string_t* win_get_process_full_name(drakvuf_t drakvuf, addr_t epr
                                    image_file_name_addr + drakvuf->offsets[OBJECTNAMEINFORMATION_NAME], 0);
 }
 
-char* win_get_process_name(drakvuf_t drakvuf, addr_t eprocess_base)
+char* win_get_process_name(drakvuf_t drakvuf, addr_t eprocess_base, bool fullpath)
 {
-    unicode_string_t* fullname = win_get_process_full_name( drakvuf, eprocess_base );
-
-    if (fullname && fullname->contents && strlen((const char*)fullname->contents) > 0)
+    if ( fullpath )
     {
-        // Replace 'proc_data->name' with 'fullname->contents'
-        // Moving ownership of fullname->contents to name for later cleanup
-        char* name = (char*)fullname->contents;
-        g_free( (gpointer)fullname );
-        return name;
+        unicode_string_t* fullname = win_get_process_full_name( drakvuf, eprocess_base );
+
+        if (fullname && fullname->contents && strlen((const char*)fullname->contents) > 0)
+        {
+            // Replace 'proc_data->name' with 'fullname->contents'
+            // Moving ownership of fullname->contents to name for later cleanup
+            char* name = (char*)fullname->contents;
+            g_free( (gpointer)fullname );
+            return name;
+        }
+
+        if (fullname)
+            vmi_free_unicode_str(fullname);
     }
 
-    if (fullname)
-        vmi_free_unicode_str(fullname);
-
     return vmi_read_str_va(drakvuf->vmi, eprocess_base + drakvuf->offsets[EPROCESS_PNAME], 0);
+}
+
+char* win_get_process_commandline(drakvuf_t drakvuf, drakvuf_trap_info_t* info, addr_t eprocess_base)
+{
+    vmi_instance_t vmi = drakvuf->vmi;
+
+    access_context_t ctx =
+    {
+        .translate_mechanism = VMI_TM_PROCESS_DTB,
+        .dtb = info->regs->cr3,
+    };
+
+    addr_t peb = 0;
+    ctx.addr = eprocess_base + drakvuf->offsets[EPROCESS_PEB];
+    if (VMI_SUCCESS != vmi_read_addr(vmi, &ctx, &peb))
+        return NULL;
+
+    addr_t proc_params = 0;
+    ctx.addr = peb + drakvuf->offsets[PEB_PROCESSPARAMETERS];
+    if (VMI_SUCCESS != vmi_read_addr(vmi, &ctx, &proc_params))
+        return NULL;
+
+    addr_t cmdline_va = proc_params + drakvuf->offsets[RTL_USER_PROCESS_PARAMETERS_COMMANDLINE];
+
+    unicode_string_t* cmdline_us = drakvuf_read_unicode(drakvuf, info, cmdline_va);
+    if (!cmdline_us)
+        return NULL;
+
+    char* cmdline = (char*)cmdline_us->contents;
+    g_free( (gpointer)cmdline_us );
+
+    return cmdline;
 }
 
 status_t win_get_process_pid(drakvuf_t drakvuf, addr_t eprocess_base, vmi_pid_t* pid)
@@ -195,9 +272,9 @@ status_t win_get_process_pid(drakvuf_t drakvuf, addr_t eprocess_base, vmi_pid_t*
     return vmi_read_32_va(drakvuf->vmi, eprocess_base + drakvuf->offsets[EPROCESS_PID], 0, (uint32_t*)pid);
 }
 
-char* win_get_current_process_name(drakvuf_t drakvuf, uint64_t vcpu_id)
+char* win_get_current_process_name(drakvuf_t drakvuf, uint64_t vcpu_id, bool fullpath)
 {
-    return win_get_process_name(drakvuf, win_get_current_process(drakvuf, vcpu_id));
+    return win_get_process_name(drakvuf, win_get_current_process(drakvuf, vcpu_id), fullpath);
 }
 
 int64_t win_get_process_userid(drakvuf_t drakvuf, addr_t eprocess_base)
@@ -372,20 +449,34 @@ bool win_get_module_list(drakvuf_t drakvuf, addr_t eprocess_base, addr_t* module
     return true;
 }
 
-bool win_find_eprocess(drakvuf_t drakvuf, vmi_pid_t find_pid, const char* find_procname, addr_t* eprocess_addr)
+static bool win_find_process_list(drakvuf_t drakvuf, addr_t* list_head)
 {
-    addr_t current_process, next_list_entry;
     vmi_instance_t vmi = drakvuf->vmi;
 
+    addr_t current_process;
     status_t status = vmi_read_addr_ksym(vmi, "PsInitialSystemProcess", &current_process);
     if ( VMI_FAILURE == status )
         return false;
 
-    addr_t list_head = current_process + drakvuf->offsets[EPROCESS_TASKS];
-    addr_t current_list_entry = list_head;
+    *list_head = current_process + drakvuf->offsets[EPROCESS_TASKS];
+    return true;
+}
 
-    status = vmi_read_addr_va(vmi, current_list_entry, 0, &next_list_entry);
-    if ( VMI_FAILURE == status )
+static bool win_find_next_process_list_entry(drakvuf_t drakvuf, addr_t current_list_entry, addr_t* next_list_entry)
+{
+    vmi_instance_t vmi = drakvuf->vmi;
+    status_t status = vmi_read_addr_va(vmi, current_list_entry, 0, next_list_entry);
+    return VMI_FAILURE != status;
+}
+
+bool win_find_eprocess(drakvuf_t drakvuf, vmi_pid_t find_pid, const char* find_procname, addr_t* eprocess_addr)
+{
+    addr_t list_head;
+    if (!win_find_process_list(drakvuf, &list_head))
+        return false;
+    addr_t current_list_entry = list_head;
+    addr_t next_list_entry;
+    if (!win_find_next_process_list_entry(drakvuf, current_list_entry, &next_list_entry))
     {
         PRINT_DEBUG("Failed to read next pointer at 0x%"PRIx64" before entering loop\n", current_list_entry);
         return false;
@@ -394,16 +485,16 @@ bool win_find_eprocess(drakvuf_t drakvuf, vmi_pid_t find_pid, const char* find_p
     do
     {
         vmi_pid_t pid;
-        current_process = current_list_entry - drakvuf->offsets[EPROCESS_TASKS] ;
+        addr_t current_process = current_list_entry - drakvuf->offsets[EPROCESS_TASKS] ;
 
-        status = vmi_read_32_va(vmi, current_process + drakvuf->offsets[EPROCESS_PID], 0, (uint32_t*)&pid);
+        status_t status = win_get_process_pid(drakvuf, current_process, &pid);
         if ( VMI_FAILURE == status )
         {
             PRINT_DEBUG("Failed to read PID of process at %"PRIx64"\n", current_process);
             return false;
         }
 
-        char* procname = vmi_read_str_va(vmi, current_process + drakvuf->offsets[EPROCESS_PNAME], 0);
+        char* procname = win_get_process_name(drakvuf, current_process, false);
 
         if ((find_pid != ~0 && pid == find_pid) || (find_procname && procname && !strcasecmp(procname, find_procname)))
         {
@@ -417,8 +508,7 @@ bool win_find_eprocess(drakvuf_t drakvuf, vmi_pid_t find_pid, const char* find_p
 
         current_list_entry = next_list_entry;
 
-        status = vmi_read_addr_va(vmi, current_list_entry, 0, &next_list_entry);
-        if ( VMI_FAILURE == status )
+        if (!win_find_next_process_list_entry(drakvuf, current_list_entry, &next_list_entry))
         {
             PRINT_DEBUG("Failed to read next pointer in loop at %"PRIx64"\n", current_list_entry);
             return false;
@@ -429,6 +519,114 @@ bool win_find_eprocess(drakvuf_t drakvuf, vmi_pid_t find_pid, const char* find_p
 
     return false;
 }
+
+bool win_enumerate_processes_with_module(drakvuf_t drakvuf, const char* module_name, bool (*visitor_func)(drakvuf_t drakvuf, const module_info_t* module_info, void* visitor_ctx), void* visitor_ctx)
+{
+    addr_t list_head;
+    if (!win_find_process_list(drakvuf, &list_head))
+        return false;
+    addr_t current_list_entry = list_head;
+    addr_t next_list_entry;
+    if (!win_find_next_process_list_entry(drakvuf, current_list_entry, &next_list_entry))
+    {
+        PRINT_DEBUG("Failed to read next pointer at 0x%"PRIx64" before entering loop\n", current_list_entry);
+        return false;
+    }
+
+    do
+    {
+        addr_t current_process = current_list_entry - drakvuf->offsets[EPROCESS_TASKS];
+
+        vmi_pid_t pid;
+        addr_t module_list_head;
+
+        if ((win_get_process_pid(drakvuf, current_process, &pid) == VMI_SUCCESS) &&
+                win_get_module_list(drakvuf, current_process, &module_list_head))
+        {
+            access_context_t ctx = { .translate_mechanism = VMI_TM_PROCESS_DTB };
+
+            if ( vmi_pid_to_dtb( drakvuf->vmi, pid, &ctx.dtb ) == VMI_SUCCESS )
+            {
+                module_info_t* module_info = win_get_module_info_ctx( drakvuf, module_list_head, &ctx, module_name );
+
+                if ( module_info )
+                {
+                    bool ret ;
+
+                    module_info->eprocess_addr = current_process ;
+                    module_info->dtb           = ctx.dtb ;
+                    module_info->pid           = pid ;
+
+                    ret = visitor_func( drakvuf, module_info, visitor_ctx );
+
+                    g_free( module_info->full_name.contents  );
+                    g_free( module_info->base_name.contents );
+
+                    g_free( module_info );
+
+                    if ( ret )
+                        return true;
+                }
+            }
+        }
+
+        current_list_entry = next_list_entry;
+
+        if (!win_find_next_process_list_entry(drakvuf, current_list_entry, &next_list_entry))
+        {
+            PRINT_DEBUG("Failed to read next pointer in loop at %"PRIx64"\n", current_list_entry);
+            return false;
+        }
+    }
+    while (next_list_entry != list_head);
+
+    return false;
+}
+
+bool win_is_crashreporter(drakvuf_t drakvuf, drakvuf_trap_info_t* info, vmi_pid_t* pid)
+{
+    if (sizeof("WerFault.exe") - 1 > strlen(info->proc_data.name))
+    {
+        PRINT_DEBUG("Error. Too short process name\n");
+        return false;
+    }
+
+    if (!strstr(info->proc_data.name, "WerFault.exe"))
+        return false;
+
+    addr_t eprocess = 0;
+    if (!win_find_eprocess(drakvuf, info->proc_data.pid, NULL, &eprocess))
+    {
+        PRINT_DEBUG("Error. Failed to get EPROCESS\n");
+        return false;
+    }
+
+    char* cmdline = win_get_process_commandline(drakvuf, info, eprocess);
+    if (!cmdline)
+    {
+        PRINT_DEBUG("Error. Failed to get command line\n");
+        return false;
+    }
+
+    char* param = strstr(cmdline, "-p ");
+    if (!param)
+    {
+        PRINT_DEBUG("Error. Failed to get param\n");
+        return false;
+    }
+
+    char* end = NULL;
+    *pid = strtoul(param + 3, &end, 10);
+    if (ERANGE == errno)
+    {
+        PRINT_DEBUG("Error. Failed to parse PID: the value is out of range\n");
+        return false;
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////
 
 status_t win_get_process_ppid( drakvuf_t drakvuf, addr_t process_base, vmi_pid_t* ppid )
 {
@@ -446,7 +644,7 @@ bool win_get_current_process_data( drakvuf_t drakvuf, uint64_t vcpu_id, proc_dat
             if ( win_get_process_ppid( drakvuf, proc_data->base_addr, &proc_data->ppid ) == VMI_SUCCESS )
             {
                 proc_data->userid = win_get_process_userid( drakvuf, proc_data->base_addr );
-                proc_data->name   = win_get_process_name( drakvuf, proc_data->base_addr );
+                proc_data->name   = win_get_process_name( drakvuf, proc_data->base_addr, 1 );
 
                 if ( proc_data->name )
                     return true ;
