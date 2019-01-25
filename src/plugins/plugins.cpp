@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2016 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -112,24 +112,23 @@
 #include "exmon/exmon.h"
 #include "ssdtmon/ssdtmon.h"
 #include "debugmon/debugmon.h"
+#include "delaymon/delaymon.h"
 #include "cpuidmon/cpuidmon.h"
 #include "socketmon/socketmon.h"
 #include "regmon/regmon.h"
 #include "procmon/procmon.h"
+#include "bsodmon/bsodmon.h"
+#include "crashmon/crashmon.h"
 
 drakvuf_plugins::drakvuf_plugins(const drakvuf_t drakvuf, output_format_t output, os_t os)
+    : drakvuf{ drakvuf }, output{ output }, os{ os }
 {
-    this->drakvuf = drakvuf;
-    this->output = output;
-    this->os = os;
 }
 
 drakvuf_plugins::~drakvuf_plugins()
 {
-    int i;
-    for (i=0; i<__DRAKVUF_PLUGIN_LIST_MAX; i++)
-        if ( this->plugins[i] )
-            delete this->plugins[i];
+    for (int i=0; i<__DRAKVUF_PLUGIN_LIST_MAX; i++)
+        delete plugins[i];
 }
 
 int drakvuf_plugins::start(const drakvuf_plugin_t plugin_id,
@@ -187,6 +186,11 @@ int drakvuf_plugins::start(const drakvuf_plugin_t plugin_id,
                     this->plugins[plugin_id] = new debugmon(this->drakvuf, config, this->output);
                     break;
 #endif
+#ifdef ENABLE_PLUGIN_DELAYMON
+                case PLUGIN_DELAYMON:
+                    this->plugins[plugin_id] = new delaymon(this->drakvuf, config, this->output);
+                    break;
+#endif
 #ifdef ENABLE_PLUGIN_CPUIDMON
                 case PLUGIN_CPUIDMON:
                     this->plugins[plugin_id] = new cpuidmon(this->drakvuf, config, this->output);
@@ -205,6 +209,16 @@ int drakvuf_plugins::start(const drakvuf_plugin_t plugin_id,
 #ifdef ENABLE_PLUGIN_PROCMON
                 case PLUGIN_PROCMON:
                     this->plugins[plugin_id] = new procmon(this->drakvuf, config, this->output);
+                    break;
+#endif
+#ifdef ENABLE_PLUGIN_BSODMON
+                case PLUGIN_BSODMON:
+                    this->plugins[plugin_id] = new bsodmon(this->drakvuf, config, this->output);
+                    break;
+#endif
+#ifdef ENABLE_PLUGIN_CRASHMON
+                case PLUGIN_CRASHMON:
+                    this->plugins[plugin_id] = new crashmon(this->drakvuf, config, this->output);
                     break;
 #endif
                 default:

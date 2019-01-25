@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -104,6 +104,13 @@
 
 #ifndef SOCKETMON_PRIVATE_H
 #define SOCKETMON_PRIVATE_H
+
+/*
+ * Socketmon installs some traps on CR3 switches to ensure
+ * that traps get registered properly. This sets an upper bound.
+ * before bailing.
+ */
+#define CR3_COUNT_BEFORE_BAIL 1000
 
 /* _pad fields are unknown/unlabeled members */
 struct tcp_listener_x86   // 44h
@@ -316,5 +323,16 @@ struct udp_endpoint_win10_x64
     uint16_t port;
     addr_t localaddr; // local_address_win10_udp_x64
 } __attribute__ ((packed));
+
+// This is yet another type of Windows string representation
+// specific for undocumented DnsQueryExW(...) function.
+// Same type for 64 and 32 bit versions.
+struct dns_query_ex_w_string_t
+{
+    uint32_t length = 0;
+    uint32_t unknown = 0; // maybe type of bytes in string, was equal to 1 in my case of wchars?
+    uint64_t pBuffer = 0; // pointer to a null-terminated string of wchars
+    //uint64_t unknown2 = 0; // maybe type of bytes in string, was equal to 1 in my case of wchars, commented out, since not needed yet
+};
 
 #endif

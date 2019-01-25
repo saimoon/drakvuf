@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -126,11 +126,13 @@ public:
 
     GSList* result_traps;
 
-    page_mode_t pm;
     output_format_t format;
 
     addr_t command_line;
     addr_t image_path_name;
+    addr_t dll_path;
+    addr_t current_directory_handle;
+    addr_t current_directory_dospath;
     addr_t object_header_body;
 
     procmon(drakvuf_t drakvuf, const void* config, output_format_t output);

@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2016 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -106,15 +106,24 @@
 #define WIN_SYMBOLS_H_
 
 #include <libvmi/libvmi.h>
+#include <json-c/json.h>
 
 status_t
 rekall_lookup(
-    const char* rekall_profile,
+    json_object* rekall_profile_json,
     const char* symbol,
     const char* subsymbol,
     addr_t* address,
     addr_t* size);
 
-os_t rekall_get_os_type(const char* rekall_profile);
+status_t
+rekall_lookup_array(
+    json_object* rekall_profile_json,
+    const char* symbol_subsymbol_array[][2],
+    addr_t array_size,
+    addr_t* address,
+    addr_t* size);
+
+os_t rekall_get_os_type(json_object* rekall_profile_json);
 
 #endif /* WIN_SYMBOLS_H_ */

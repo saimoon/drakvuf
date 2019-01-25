@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -139,8 +139,7 @@ static GTree* pooltag_build_tree()
 static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 {
     poolmon* p = (poolmon*)info->trap->data;
-    vmi_instance_t vmi = drakvuf_lock_and_get_vmi(drakvuf);
-    page_mode_t pm = vmi_get_page_mode(vmi, 0);
+    page_mode_t pm = drakvuf_get_page_mode(drakvuf);
     reg_t pool_type, size;
     char tag[5] = { [0 ... 4] = '\0' };
     struct pooltag* s = NULL;
@@ -154,21 +153,24 @@ static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
     {
         pool_type = info->regs->rcx;
         size = info->regs->rdx;
-        *(reg_t*)tag = info->regs->r8;
+        *(uint32_t*)tag = (uint32_t) info->regs->r8;
     }
     else
     {
+        vmi_lock_guard vmi_lg(drakvuf);
+        vmi_instance_t& vmi = vmi_lg.vmi;
+
         ctx.addr = info->regs->rsp+12;
         if ( VMI_FAILURE == vmi_read_32(vmi, &ctx, (uint32_t*)tag) )
-            goto done;
+            return 0;
 
         ctx.addr = info->regs->rsp+8;
         if ( VMI_FAILURE == vmi_read_32(vmi, &ctx, (uint32_t*)&size) )
-            goto done;
+            return 0;
 
         ctx.addr = info->regs->rsp+4;
         if ( VMI_FAILURE == vmi_read_32(vmi, &ctx, (uint32_t*)&pool_type) )
-            goto done;
+            return 0;
     }
 
     s = (struct pooltag*)g_tree_lookup(p->pooltag_tree, tag);
@@ -207,8 +209,6 @@ static event_response_t cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
     printf("\n");
 
-done:
-    drakvuf_release_vmi(drakvuf);
     return 0;
 }
 
@@ -230,14 +230,13 @@ done:
 
 poolmon::poolmon(drakvuf_t drakvuf, const void* config, output_format_t output)
 {
-    const char* rekall_profile = (const char*)config;
     this->pooltag_tree = pooltag_build_tree();
 
     this->trap.breakpoint.lookup_type = LOOKUP_PID;
     this->trap.breakpoint.pid = 4;
     this->trap.breakpoint.addr_type = ADDR_RVA;
 
-    if ( !drakvuf_get_function_rva(rekall_profile,"ExAllocatePoolWithTag", &this->trap.breakpoint.rva) )
+    if ( !drakvuf_get_function_rva(drakvuf,"ExAllocatePoolWithTag", &this->trap.breakpoint.rva) )
         throw -1;
 
     this->trap.breakpoint.module = "ntoskrnl.exe";

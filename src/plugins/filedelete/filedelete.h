@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -108,9 +108,14 @@
 #include "plugins/private.h"
 #include "plugins/plugins.h"
 
-#include <set>
+#include <map>
 #include <utility>
 #include <cstdint>
+
+// For `filedelete2`
+using handle_t = uint64_t;
+using handled_t = bool;
+using file_name_t = std::string;
 
 class filedelete: public plugin
 {
@@ -133,12 +138,26 @@ public:
     page_mode_t pm;
     uint32_t domid;
     output_format_t format;
+    bool use_injector;
 
-    std::set<std::pair<vmi_pid_t, uint64_t>> changed_file_handles;
+    std::map<std::pair<vmi_pid_t, handle_t>, file_name_t> files;
     int sequence_number;
 
     filedelete(drakvuf_t drakvuf, const void* config, output_format_t output);
     ~filedelete();
+
+    // For `filedelete2`
+    addr_t queryobject_va;
+    addr_t readfile_va;
+    addr_t waitobject_va;
+    addr_t exallocatepool_va;
+    addr_t exfreepool_va;
+
+    // Maps virtual address of buffer to free flag:
+    // * `true` means pools is free;
+    // * `false` otherwise.
+    std::map<addr_t, bool> pools;
+    std::map<std::pair<addr_t, uint32_t>, handled_t> closing_handles;
 };
 
 #endif

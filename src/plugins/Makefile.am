@@ -1,6 +1,6 @@
 #********************IMPORTANT DRAKVUF LICENSE TERMS**********************#
 #                                                                         #
-# DRAKVUF (C) 2014-2016 Tamas K Lengyel.                                  #
+# DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  #
 # Tamas K Lengyel is hereinafter referred to as the author.               #
 # This program is free software; you may redistribute and/or modify it    #
 # under the terms of the GNU General Public License as published by the   #
@@ -119,7 +119,7 @@ sources += filetracer/filetracer.cpp
 endif
 
 if PLUGIN_FILEDELETE
-sources += filedelete/filedelete.cpp
+sources += filedelete/filedelete.cpp filedelete/filedelete2_helpers.cpp
 endif
 
 if PLUGIN_OBJMON
@@ -138,6 +138,10 @@ if PLUGIN_DEBUGMON
 sources += debugmon/debugmon.cpp
 endif
 
+if PLUGIN_DELAYMON
+sources += delaymon/delaymon.cpp
+endif
+
 if PLUGIN_CPUIDMON
 sources += cpuidmon/cpuidmon.cpp
 endif
@@ -151,7 +155,15 @@ sources += regmon/regmon.cpp
 endif
 
 if PLUGIN_PROCMON
-sources += procmon/procmon.cpp
+sources += procmon/procmon.cpp procmon/ntstatus.cpp
+endif
+
+if PLUGIN_BSODMON
+sources += bsodmon/bsodmon.cpp bsodmon/bugcheck.cpp
+endif
+
+if PLUGIN_CRASHMON
+sources += crashmon/crashmon.cpp
 endif
 
 ###############################################################################

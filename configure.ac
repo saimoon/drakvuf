@@ -1,6 +1,6 @@
 #********************IMPORTANT DRAKVUF LICENSE TERMS**********************#
 #                                                                         #
-# DRAKVUF (C) 2014-2016 Tamas K Lengyel.                                  #
+# DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  #
 # Tamas K Lengyel is hereinafter referred to as the author.               #
 # This program is free software; you may redistribute and/or modify it    #
 # under the terms of the GNU General Public License as published by the   #
@@ -111,6 +111,7 @@ AC_CONFIG_MACRO_DIR([m4])
 
 AC_PROG_CC_STDC
 AC_PROG_CXX(clang++)
+AX_REQUIRE_DEFINED([AX_CXX_COMPILE_STDCXX_11])
 AX_CXX_COMPILE_STDCXX_11
 
 ######################################################
@@ -195,6 +196,16 @@ if test x$plugin_debugmon = xyes; then
   AC_DEFINE_UNQUOTED(ENABLE_PLUGIN_DEBUGMON, 1, "")
 fi
 
+AC_ARG_ENABLE([plugin_delaymon],
+  [AS_HELP_STRING([--disable-plugin-delaymon],
+    [Enable the debug exception watching plugin @<:@yes@:>@])],
+  [plugin_delaymon="$enableval"],
+  [plugin_delaymon="yes"])
+AM_CONDITIONAL([PLUGIN_DELAYMON], [test x$plugin_delaymon = xyes])
+if test x$plugin_delaymon = xyes; then
+  AC_DEFINE_UNQUOTED(ENABLE_PLUGIN_DELAYMON, 1, "")
+fi
+
 AC_ARG_ENABLE([plugin_cpuidmon],
   [AS_HELP_STRING([--disable-plugin-cpuidmon],
     [Enable the CPUID watching plugin @<:@yes@:>@])],
@@ -235,6 +246,26 @@ if test x$plugin_procmon = xyes; then
   AC_DEFINE_UNQUOTED(ENABLE_PLUGIN_PROCMON, 1, "")
 fi
 
+AC_ARG_ENABLE([plugin_bsodmon],
+  [AS_HELP_STRING([--disable-plugin-bsodmon],
+    [Enable the windows kernel bugcheck watching plugin @<:@yes@:>@])],
+  [plugin_bsodmon="$enableval"],
+  [plugin_bsodmon="yes"])
+AM_CONDITIONAL([PLUGIN_BSODMON], [test x$plugin_bsodmon = xyes])
+if test x$plugin_bsodmon = xyes; then
+  AC_DEFINE_UNQUOTED(ENABLE_PLUGIN_BSODMON, 1, "")
+fi
+
+AC_ARG_ENABLE([plugin_crashmon],
+  [AS_HELP_STRING([--disable-plugin-crashmon],
+    [Enable the windows error reporting tool WerFault.exe watching plugin @<:@yes@:>@])],
+  [plugin_crashmon="$enableval"],
+  [plugin_crashmon="yes"])
+AM_CONDITIONAL([PLUGIN_CRASHMON], [test x$plugin_crashmon = xyes])
+if test x$plugin_crashmon = xyes; then
+  AC_DEFINE_UNQUOTED(ENABLE_PLUGIN_CRASHMON, 1, "")
+fi
+
 #####################################################
 
 AC_ARG_ENABLE([hardening],
@@ -250,6 +281,21 @@ AC_ARG_ENABLE([debug],
   [debug="$enableval"],
   [debug="no"])
 AM_CONDITIONAL([DEBUG], [test x$debug = xyes])
+
+AC_ARG_ENABLE([doppelganging],
+  [AS_HELP_STRING([--enable-doppelganging-injection],
+    [Enable doppelganging injection @<:@no@:>@])],
+  [doppelganging="$enableval"],
+  [doppelganging="no"])
+if test x$doppelganging = xyes; then
+  AC_DEFINE_UNQUOTED(ENABLE_DOPPELGANGING, 1, "")
+fi
+
+AC_ARG_WITH([stdlib],
+  [AS_HELP_STRING([--with-stdlib=LIB], [specify the C++ standard library to use [default=system]])],
+  [], [with_stdlib=system])
+AS_IF([test "x$with_stdlib" != "xsystem"],
+  [CXXFLAGS="$CXXFLAGS -stdlib=$with_stdlib"])
 
 #####################################################
 # AUTOHARDEN START
@@ -351,8 +397,8 @@ AC_CHECK_LIB(vmi, [vmi_events_version], [], [AC_ERROR([LibVMI doesn't have requi
 AC_CHECK_LIB(json-c, json_object_get_int64,, [AC_ERROR([libjson-c-dev is missing])])
 AC_CHECK_HEADERS([json-c/json.h], [], [AC_ERROR([libjson-c-dev is missing])])
 
-AC_CHECK_HEADERS([libxl_utils.h], [], [AC_ERROR([Xenlight (libxl) headers are not usable])])
-AC_CHECK_LIB(xenlight, libxl_name_to_domid, [], [AC_ERROR([Xenlight does not have required features!])])
+AC_CHECK_LIB([xencall], [xencall_buffers_never_fault])
+AC_CHECK_LIB([xenforeignmemory], [xenforeignmemory_map_resource])
 
 #AC_CHECK_HEADER([xenstore.h])
 #AC_CHECK_LIB(xenstore, [xc_read, xs_transaction_start], [], [AC_ERROR([Xenstore not found!])])
@@ -367,6 +413,9 @@ AC_CHECK_LIB([xenctrl],
 AC_CHECK_LIB([xenctrl],
 	[xc_memshr_control, xc_memshr_nominate_gfn, xc_memshr_share_gfns],
 	[], [AC_ERROR([XenCtrl is unusable! Do you have Xen 4.2+ installed?])])
+
+AC_CHECK_HEADERS([libxl_utils.h], [], [AC_ERROR([Xenlight (libxl) headers are not usable])])
+AC_CHECK_LIB(xenlight, libxl_name_to_domid, [], [AC_ERROR([Xenlight does not have required features!])])
 
 AC_CHECK_LIB([xentoollog], [xtl_logger_destroy])
 
@@ -403,4 +452,6 @@ Debugmon:   $plugin_debugmon
 Socketmon:  $plugin_socketmon
 Regmon:     $plugin_regmon
 Procmon:    $plugin_procmon
+BSODmon:    $plugin_bsodmon
+CrashMon:   $plugin_crashmon
 -------------------------------------------------------------------------------])

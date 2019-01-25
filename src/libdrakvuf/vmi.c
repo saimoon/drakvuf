@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -306,6 +306,12 @@ event_response_t pre_mem_cb(vmi_instance_t vmi, vmi_event_t* event)
     drakvuf_t drakvuf = event->data;
     drakvuf->regs[event->vcpu_id] = event->x86_regs;
 
+    if (event->mem_event.gfn == drakvuf->zero_page_gfn)
+    {
+        PRINT_DEBUG("Somebody try to do something to the empty page, let's emulate it\n");
+        return rsp | VMI_EVENT_RESPONSE_EMULATE_NOWRITE;
+    }
+
     struct wrapper* s = g_hash_table_lookup(drakvuf->memaccess_lookup_gfn, &event->mem_event.gfn);
     if (!s)
     {
@@ -327,6 +333,9 @@ event_response_t pre_mem_cb(vmi_instance_t vmi, vmi_event_t* event)
 
     drakvuf_get_current_process_data( drakvuf, event->vcpu_id, &proc_data );
 
+    GTimeVal timestamp;
+    g_get_current_time(&timestamp);
+
     GSList* loop = s->traps;
     drakvuf->in_callback = 1;
     while (loop)
@@ -344,12 +353,11 @@ event_response_t pre_mem_cb(vmi_instance_t vmi, vmi_event_t* event)
                 .proc_data.pid       = proc_data.pid,
                 .proc_data.ppid      = proc_data.ppid,
                 .proc_data.userid    = proc_data.userid,
+                .timestamp           = timestamp,
                 .trap_pa = pa,
                 .regs = event->x86_regs,
                 .vcpu = event->vcpu_id,
             };
-
-            g_get_current_time(&trap_info.timestamp);
 
             rsp |= trap->cb(drakvuf, &trap_info);
         }
@@ -379,12 +387,11 @@ event_response_t pre_mem_cb(vmi_instance_t vmi, vmi_event_t* event)
                     .proc_data.pid       = proc_data.pid,
                     .proc_data.ppid      = proc_data.ppid,
                     .proc_data.userid    = proc_data.userid,
+                    .timestamp           = timestamp,
                     .trap_pa = pa,
                     .regs = event->x86_regs,
                     .vcpu = event->vcpu_id,
                 };
-
-                g_get_current_time(&trap_info.timestamp);
 
                 loop = loop->next;
                 rsp |= trap->cb(drakvuf, &trap_info);
@@ -433,7 +440,15 @@ event_response_t pre_mem_cb(vmi_instance_t vmi, vmi_event_t* event)
             }
         }
         else
+        {
             event->slat_id = drakvuf->altp2m_idr;
+            if (event->mem_event.out_access & VMI_MEMACCESS_W)
+            {
+                g_free(pass);
+                PRINT_DEBUG("Somebody try to write to the shadow page, let's emulate it instead\n");
+                return rsp | VMI_EVENT_RESPONSE_EMULATE_NOWRITE;
+            }
+        }
 
         PRINT_DEBUG("Switching to altp2m view %u on vCPU %u\n", event->slat_id, event->vcpu_id);
 
@@ -506,6 +521,9 @@ event_response_t int3_cb(vmi_instance_t vmi, vmi_event_t* event)
 
     drakvuf_get_current_process_data(drakvuf, event->vcpu_id, &proc_data);
 
+    GTimeVal timestamp;
+    g_get_current_time(&timestamp);
+
     drakvuf->in_callback = 1;
     GSList* loop = s->traps;
     while (loop)
@@ -519,12 +537,11 @@ event_response_t int3_cb(vmi_instance_t vmi, vmi_event_t* event)
             .proc_data.pid       = proc_data.pid,
             .proc_data.ppid      = proc_data.ppid,
             .proc_data.userid    = proc_data.userid,
+            .timestamp           = timestamp,
             .trap_pa = pa,
             .regs = event->x86_regs,
             .vcpu = event->vcpu_id,
         };
-
-        g_get_current_time(&trap_info.timestamp);
 
         loop = loop->next;
         rsp |= trap->cb(drakvuf, &trap_info);
@@ -588,6 +605,9 @@ event_response_t cr3_cb(vmi_instance_t vmi, vmi_event_t* event)
 
     drakvuf_get_current_process_data( drakvuf, event->vcpu_id, &proc_data );
 
+    GTimeVal timestamp;
+    g_get_current_time(&timestamp);
+
     drakvuf->in_callback = 1;
     GSList* loop = drakvuf->cr3;
     while (loop)
@@ -601,11 +621,10 @@ event_response_t cr3_cb(vmi_instance_t vmi, vmi_event_t* event)
             .proc_data.pid       = proc_data.pid,
             .proc_data.ppid      = proc_data.ppid,
             .proc_data.userid    = proc_data.userid,
+            .timestamp           = timestamp,
             .regs = event->x86_regs,
             .vcpu = event->vcpu_id,
         };
-
-        g_get_current_time(&trap_info.timestamp);
 
         loop = loop->next;
         rsp |= trap->cb(drakvuf, &trap_info);
@@ -637,6 +656,9 @@ event_response_t debug_cb(vmi_instance_t vmi, vmi_event_t* event)
 
     drakvuf_get_current_process_data( drakvuf, event->vcpu_id, &proc_data );
 
+    GTimeVal timestamp;
+    g_get_current_time(&timestamp);
+
     drakvuf->in_callback = 1;
     GSList* loop = drakvuf->debug;
     while (loop)
@@ -650,12 +672,11 @@ event_response_t debug_cb(vmi_instance_t vmi, vmi_event_t* event)
             .proc_data.pid       = proc_data.pid,
             .proc_data.ppid      = proc_data.ppid,
             .proc_data.userid    = proc_data.userid,
+            .timestamp           = timestamp,
             .regs = event->x86_regs,
             .vcpu = event->vcpu_id,
             .debug = &event->debug_event
         };
-
-        g_get_current_time(&trap_info.timestamp);
 
         loop = loop->next;
         rsp |= trap->cb(drakvuf, &trap_info);
@@ -687,6 +708,9 @@ event_response_t cpuid_cb(vmi_instance_t vmi, vmi_event_t* event)
 
     drakvuf_get_current_process_data( drakvuf, event->vcpu_id, &proc_data );
 
+    GTimeVal timestamp;
+    g_get_current_time(&timestamp);
+
     drakvuf->in_callback = 1;
     GSList* loop = drakvuf->cpuid;
     while (loop)
@@ -700,12 +724,11 @@ event_response_t cpuid_cb(vmi_instance_t vmi, vmi_event_t* event)
             .proc_data.pid       = proc_data.pid,
             .proc_data.ppid      = proc_data.ppid,
             .proc_data.userid    = proc_data.userid,
+            .timestamp           = timestamp,
             .regs = event->x86_regs,
             .vcpu = event->vcpu_id,
             .cpuid = &event->cpuid_event
         };
-
-        g_get_current_time(&trap_info.timestamp);
 
         loop = loop->next;
         rsp |= trap->cb(drakvuf, &trap_info);
@@ -992,6 +1015,9 @@ bool inject_trap_pa(drakvuf_t drakvuf,
     if ( !remapped_gfn )
     {
         remapped_gfn = g_malloc0(sizeof(struct remapped_gfn));
+        if ( !remapped_gfn )
+            goto err_exit;
+
         remapped_gfn->o = current_gfn;
 
         int rc;
@@ -1005,7 +1031,10 @@ bool inject_trap_pa(drakvuf_t drakvuf,
         rc = xc_domain_populate_physmap_exact(drakvuf->xen->xc, drakvuf->domID, 1, 0, 0, &remapped_gfn->r);
         PRINT_DEBUG("Physmap populated? %i\n", rc);
         if (rc < 0)
+        {
+            g_free(remapped_gfn);
             goto err_exit;
+        }
 
         g_hash_table_insert(drakvuf->remapped_gfns,
                             &remapped_gfn->o,
@@ -1115,8 +1144,9 @@ bool inject_trap_pa(drakvuf_t drakvuf,
     return 1;
 
 err_exit:
+    if ( container->traps )
+        g_slist_free(container->traps);
     g_free(container);
-    g_free(remapped_gfn);
     return 0;
 }
 
@@ -1198,6 +1228,43 @@ bool control_cpuid_trap(drakvuf_t drakvuf, bool toggle)
     return 1;
 }
 
+void drakvuf_vmi_event_callback (int fd, void* data)
+{
+    UNUSED(fd);
+    drakvuf_t drakvuf = *(drakvuf_t*) data;
+    status_t status = vmi_events_listen(drakvuf->vmi, 0);
+    if (VMI_SUCCESS != status)
+    {
+        PRINT_DEBUG("Error waiting for events or timeout, quitting...\n");
+        drakvuf->interrupted = -1;
+    }
+}
+
+static void drakvuf_poll(drakvuf_t drakvuf, unsigned int timeout)
+{
+    int rc = poll(drakvuf->event_fds, drakvuf->event_fd_cnt, timeout);
+
+    if (rc == 0)
+        return;
+
+    else if (rc < 0)
+    {
+        PRINT_DEBUG("DRAKVUF loop broke unexpectedly\n");
+        drakvuf->interrupted = -1;
+        return;
+    }
+
+    /* check and process each fd if it was raised */
+    for (int poll_ix=0; poll_ix<drakvuf->event_fd_cnt; poll_ix++)
+    {
+        if ( !(drakvuf->event_fds[poll_ix].revents & (POLLIN | POLLERR)) )
+            continue;
+
+        fd_info_t fd_info = &drakvuf->fd_info_lookup[poll_ix];
+        fd_info->event_cb(fd_info->fd, fd_info->data);
+    }
+}
+
 void drakvuf_loop(drakvuf_t drakvuf)
 {
 
@@ -1207,73 +1274,92 @@ void drakvuf_loop(drakvuf_t drakvuf)
     drakvuf_force_resume(drakvuf);
 
     while (!drakvuf->interrupted)
-    {
-        //PRINT_DEBUG("Waiting for events in DRAKVUF...\n");
-        status_t status = vmi_events_listen(drakvuf->vmi, 1000);
-
-        if ( VMI_SUCCESS != status )
-        {
-            PRINT_DEBUG("Error waiting for events or timeout, quitting...\n");
-            drakvuf->interrupted = -1;
-        }
-    }
+        drakvuf_poll(drakvuf, 1000);
 
     vmi_pause_vm(drakvuf->vmi);
+
+    // Ensures all events are processed from the ring
+    drakvuf_poll(drakvuf, 0);
+
     //print_sharing_info(drakvuf->xen, drakvuf->domID);
 
     PRINT_DEBUG("DRAKVUF loop finished\n");
 }
 
-bool init_vmi(drakvuf_t drakvuf)
+bool init_vmi(drakvuf_t drakvuf, bool libvmi_conf)
 {
 
     int rc;
-    uint64_t flags = 0;
+    uint64_t flags = VMI_OS_WINDOWS == drakvuf->os ? VMI_PM_INITFLAG_TRANSITION_PAGES : 0;
 
-    PRINT_DEBUG("Init VMI on domID %u -> %s\n", drakvuf->domID, drakvuf->dom_name);
+    vmi_init_data_t* init_data = g_malloc0(sizeof(vmi_init_data_t) + sizeof(vmi_init_data_entry_t));
+    if ( !init_data )
+        return 0;
+
+    init_data->count = 1;
+    init_data->entry[0].type = VMI_INIT_DATA_XEN_EVTCHN;
+    init_data->entry[0].data = (void*) drakvuf->xen->evtchn;
+
+    PRINT_DEBUG("init_vmi on domID %u -> %s\n", drakvuf->domID, drakvuf->dom_name);
 
     /* initialize the libvmi library */
-    if (VMI_FAILURE == vmi_init(&drakvuf->vmi, VMI_XEN, &drakvuf->domID, VMI_INIT_DOMAINID | VMI_INIT_EVENTS, NULL, NULL))
+    status_t status = vmi_init(&drakvuf->vmi,
+                               VMI_XEN,
+                               &drakvuf->domID,
+                               VMI_INIT_DOMAINID | VMI_INIT_EVENTS,
+                               (void*)init_data,
+                               NULL);
+    g_free(init_data);
+    if ( VMI_FAILURE == status )
     {
         printf("Failed to init LibVMI library.\n");
         return 0;
     }
-
-    GHashTable* config = g_hash_table_new(g_str_hash, g_str_equal);
-    g_hash_table_insert(config, "rekall_profile", drakvuf->rekall_profile);
-
-    switch (drakvuf->os)
-    {
-        case VMI_OS_WINDOWS:
-            g_hash_table_insert(config, "os_type", "Windows");
-            flags = VMI_PM_INITFLAG_TRANSITION_PAGES;
-            break;
-        case VMI_OS_LINUX:
-            g_hash_table_insert(config, "os_type", "Linux");
-            break;
-        default:
-            break;
-    };
+    PRINT_DEBUG("init_vmi: initializing vmi done\n");
 
     if (VMI_PM_UNKNOWN == vmi_init_paging(drakvuf->vmi, flags) )
     {
         printf("Failed to init LibVMI paging.\n");
-        g_hash_table_destroy(config);
-        return 1;
+        return 0;
     }
+    PRINT_DEBUG("init_vmi: initializing vmi paging done\n");
 
-    os_t os = vmi_init_os(drakvuf->vmi, VMI_CONFIG_GHASHTABLE, config, NULL);
+    os_t os = VMI_OS_UNKNOWN;
 
-    g_hash_table_destroy(config);
+    if (libvmi_conf)
+        os = vmi_init_os(drakvuf->vmi, VMI_CONFIG_GLOBAL_FILE_ENTRY, NULL, NULL);
+
+    if (VMI_OS_UNKNOWN == os)
+    {
+        GHashTable* config = g_hash_table_new(g_str_hash, g_str_equal);
+        g_hash_table_insert(config, "rekall_profile", drakvuf->rekall_profile);
+
+        switch (drakvuf->os)
+        {
+            case VMI_OS_WINDOWS:
+                g_hash_table_insert(config, "os_type", "Windows");
+                break;
+            case VMI_OS_LINUX:
+                g_hash_table_insert(config, "os_type", "Linux");
+                break;
+            default:
+                break;
+        };
+
+        os = vmi_init_os(drakvuf->vmi, VMI_CONFIG_GHASHTABLE, config, NULL);
+
+        g_hash_table_destroy(config);
+    }
 
     if ( os != drakvuf->os )
     {
         PRINT_DEBUG("Failed to init LibVMI library.\n");
-        drakvuf->vmi = NULL;
         return 0;
     }
+    PRINT_DEBUG("init_vmi: initializing vmi OS done\n");
 
     drakvuf->pm = vmi_get_page_mode(drakvuf->vmi, 0);
+    drakvuf->address_width = vmi_get_address_width(drakvuf->vmi);
     drakvuf->vcpus = vmi_get_num_vcpus(drakvuf->vmi);
     drakvuf->init_memsize = xen_get_maxmemkb(drakvuf->xen, drakvuf->domID);
     if ( xc_domain_maximum_gpfn(drakvuf->xen->xc, drakvuf->domID, &drakvuf->max_gpfn) < 0 )
@@ -1327,6 +1413,13 @@ bool init_vmi(drakvuf_t drakvuf)
     if (rc < 0)
         return 0;
 
+    uint8_t fmask[VMI_PS_4KB] = {[0 ... VMI_PS_4KB-1] = 0xFF};
+    if (VMI_FAILURE == vmi_write_pa(drakvuf->vmi, drakvuf->zero_page_gfn<<12, VMI_PS_4KB, &fmask, NULL))
+    {
+        PRINT_DEBUG("Failed to mask FF to the empty page\n");
+        return 0;
+    }
+
     /*
      * Create altp2m view
      */
@@ -1357,7 +1450,7 @@ bool init_vmi(drakvuf_t drakvuf)
     if (rc < 0)
         return 0;
 
-    SETUP_INTERRUPT_EVENT(&drakvuf->interrupt_event, 0, int3_cb);
+    SETUP_INTERRUPT_EVENT(&drakvuf->interrupt_event, int3_cb);
     drakvuf->interrupt_event.data = drakvuf;
 
     if (VMI_FAILURE == vmi_register_event(drakvuf->vmi, &drakvuf->interrupt_event))
@@ -1389,6 +1482,19 @@ bool init_vmi(drakvuf_t drakvuf)
     if (rc < 0)
         return 0;
 
+    //setup a mem event for the empty page
+    drakvuf->guard0.type = MEMACCESS;
+    drakvuf->guard0.memaccess.access = VMI_MEMACCESS_RWX;
+    drakvuf->guard0.memaccess.type = PRE;
+    drakvuf->guard0.memaccess.gfn = drakvuf->zero_page_gfn;
+
+    if (!inject_trap_mem(drakvuf, &drakvuf->guard0, 0))
+    {
+        PRINT_DEBUG("Failed to create guard trap for the empty page!\n");
+        return 0;
+    }
+
+    PRINT_DEBUG("init_vmi finished\n");
     return 1;
 }
 
@@ -1396,7 +1502,7 @@ bool init_vmi(drakvuf_t drakvuf)
 
 void close_vmi(drakvuf_t drakvuf)
 {
-    PRINT_DEBUG("starting close_vmi_drakvuf\n");
+    PRINT_DEBUG("close_vmi starting\n");
 
     drakvuf_pause(drakvuf);
 
@@ -1413,6 +1519,8 @@ void close_vmi(drakvuf_t drakvuf)
             s->traps = NULL;
         }
     }
+
+    remove_trap(drakvuf, &drakvuf->guard0);
 
     if (drakvuf->vmi)
     {
@@ -1488,5 +1596,5 @@ void close_vmi(drakvuf_t drakvuf)
 
     drakvuf_resume(drakvuf);
 
-    PRINT_DEBUG("close_vmi_drakvuf finished\n");
+    PRINT_DEBUG("close_vmi finished\n");
 }

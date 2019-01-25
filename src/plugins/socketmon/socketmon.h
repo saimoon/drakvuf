@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -107,6 +107,7 @@
 
 #include "plugins/private.h"
 #include "plugins/plugins.h"
+#include "private.h"
 
 class socketmon: public plugin
 {
@@ -114,13 +115,25 @@ public:
     page_mode_t pm;
     output_format_t format;
     win_ver_t winver;
-    drakvuf_trap_t trap[7] =
+
+    drakvuf_trap_t tcpip_traps[7] =
     {
         [0 ... 6] = {
             .breakpoint.lookup_type = LOOKUP_PID,
             .breakpoint.pid = 4,
             .breakpoint.addr_type = ADDR_RVA,
             .breakpoint.module = "tcpip.sys",
+            .type = BREAKPOINT,
+            .data = (void*)this
+        }
+    };
+
+    drakvuf_trap_t dnsapi_traps[6] =
+    {
+        [0 ... 5] = {
+            .breakpoint.lookup_type = LOOKUP_PID,
+            .breakpoint.addr_type = ADDR_VA,
+            .breakpoint.module = "dnsapi.dll",
             .type = BREAKPOINT,
             .data = (void*)this
         }

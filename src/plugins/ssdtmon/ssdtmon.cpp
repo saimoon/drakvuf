@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
  *                                                                         *
- * DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+ * DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
  * Tamas K Lengyel is hereinafter referred to as the author.               *
  * This program is free software; you may redistribute and/or modify it    *
  * under the terms of the GNU General Public License as published by the   *
@@ -157,18 +157,17 @@ event_response_t write_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 
 ssdtmon::ssdtmon(drakvuf_t drakvuf, const void* config, output_format_t output)
 {
-    const char* rekall_profile = (const char*)config;
     addr_t kiservicetable_rva = 0, kiservicelimit_rva = 0;
     addr_t kernbase = 0;
 
     this->format = output;
 
-    if ( !drakvuf_get_constant_rva(rekall_profile, "KiServiceTable", &kiservicetable_rva) )
+    if ( !drakvuf_get_constant_rva(drakvuf, "KiServiceTable", &kiservicetable_rva) )
     {
         PRINT_DEBUG("SSDT plugin can't find KiServiceTable RVA\n");
         throw -1;
     }
-    if ( !drakvuf_get_constant_rva(rekall_profile, "KiServiceLimit", &kiservicelimit_rva) )
+    if ( !drakvuf_get_constant_rva(drakvuf, "KiServiceLimit", &kiservicelimit_rva) )
     {
         PRINT_DEBUG("SSDT plugin can't find KiServiceLimit RVA\n");
         throw -1;
@@ -181,9 +180,9 @@ ssdtmon::ssdtmon(drakvuf_t drakvuf, const void* config, output_format_t output)
         throw -1;
     }
 
-    vmi_instance_t vmi = drakvuf_lock_and_get_vmi(drakvuf);
-    page_mode_t pm = vmi_get_page_mode(vmi, 0);
+    page_mode_t pm = drakvuf_get_page_mode(drakvuf);
 
+    vmi_instance_t vmi = drakvuf_lock_and_get_vmi(drakvuf);
     if ( VMI_FAILURE == vmi_translate_kv2p(vmi, kernbase + kiservicetable_rva, &this->kiservicetable) )
         throw -1;
 

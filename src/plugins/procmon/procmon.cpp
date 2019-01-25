@@ -1,6 +1,6 @@
 /*********************IMPORTANT DRAKVUF LICENSE TERMS***********************
 *                                                                         *
-* DRAKVUF (C) 2014-2017 Tamas K Lengyel.                                  *
+* DRAKVUF (C) 2014-2019 Tamas K Lengyel.                                  *
 * Tamas K Lengyel is hereinafter referred to as the author.               *
 * This program is free software; you may redistribute and/or modify it    *
 * under the terms of the GNU General Public License as published by the   *
@@ -109,6 +109,7 @@
 #include <assert.h>
 
 #include "../plugins.h"
+#include "ntstatus.h"
 #include "procmon.h"
 
 namespace
@@ -140,49 +141,72 @@ static void print_process_creation_result(
 {
     addr_t cmdline_addr = user_process_parameters_addr + f->command_line;
     addr_t imagepath_addr = user_process_parameters_addr + f->image_path_name;
+    addr_t dllpath_addr = user_process_parameters_addr + f->dll_path;
+    addr_t curdir_handle_addr = user_process_parameters_addr + f->current_directory_handle;
+    addr_t curdir_dospath_addr = user_process_parameters_addr + f->current_directory_dospath;
 
     unicode_string_t* cmdline_us = drakvuf_read_unicode(drakvuf, info, cmdline_addr);
     unicode_string_t* imagepath_us = drakvuf_read_unicode(drakvuf, info, imagepath_addr);
+    unicode_string_t* dllpath_us = drakvuf_read_unicode(drakvuf, info, dllpath_addr);
+
+    char* curdir = drakvuf_get_filename_from_handle(drakvuf, info, curdir_handle_addr);
+    if (!curdir)
+    {
+        unicode_string_t* curdir_us = drakvuf_read_unicode(drakvuf, info, curdir_dospath_addr);
+        if (curdir_us)
+        {
+            curdir = (char*)curdir_us->contents;
+            curdir_us->contents = nullptr;
+            vmi_free_unicode_str(curdir_us);
+        }
+        else
+            curdir = g_strdup("");
+    }
 
     char* cmdline = g_strescape(cmdline_us ? reinterpret_cast<char const*>(cmdline_us->contents) : "", NULL);
     char const* imagepath = imagepath_us ? reinterpret_cast<char const*>(imagepath_us->contents) : "";
+    char const* dllpath = dllpath_us ? reinterpret_cast<char const*>(dllpath_us->contents) : "";
 
     switch ( f->format )
     {
         case OUTPUT_CSV:
-            printf("procmon," FORMAT_TIMEVAL ",%" PRIu32 ",0x%" PRIx64 ",\"%s\",%" PRIi64",%s,0x%" PRIx64 ",%d,%s,%s\n",
+            printf("procmon," FORMAT_TIMEVAL ",%" PRIu32 ",0x%" PRIx64 ",\"%s\",%" PRIi64",%s,0x%" PRIx64 ",%d,%s,%s,%s,%s\n",
                    UNPACK_TIMEVAL(info->timestamp), info->vcpu, info->regs->cr3, info->proc_data.name,
-                   info->proc_data.userid, info->trap->name, status, new_pid, cmdline, imagepath);
+                   info->proc_data.userid, info->trap->name, status, new_pid, cmdline, imagepath, dllpath, curdir);
             break;
 
         case OUTPUT_KV:
             printf("Plugin=procmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\","
-                   "Method=%s,Status=0x%" PRIx64 ",NewPid=%d,CommandLine=\"%s\",ImagePathName=\"%s\"\n",
+                   "Method=%s,Status=0x%" PRIx64 ",NewPid=%d,CommandLine=\"%s\",ImagePathName=\"%s\",DllPath=\"%s\",CWD=\"%s\"\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                   info->trap->name, status, new_pid, cmdline, imagepath);
+                   info->trap->name, status, new_pid, cmdline, imagepath, dllpath, curdir);
             break;
 
         default:
         case OUTPUT_DEFAULT:
             printf("[PROCMON] TIME:" FORMAT_TIMEVAL " VCPU:%" PRIu32 " CR3:0x%" PRIx64 ", EPROCESS:0x%" PRIx64
-                   ", PID:%d, PPID:%d, \"%s\" %s:%" PRIi64 " %s:0x%" PRIx64 ":%d:%s:%s\n",
+                   ", PID:%d, PPID:%d, \"%s\" %s:%" PRIi64 " %s:0x%" PRIx64 ":%d:%s:%s:%s:%s\n",
                    UNPACK_TIMEVAL(info->timestamp), info->vcpu, info->regs->cr3, info->proc_data.base_addr,
                    info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                   USERIDSTR(drakvuf), info->proc_data.userid, info->trap->name, status, new_pid, cmdline, imagepath);
+                   USERIDSTR(drakvuf), info->proc_data.userid, info->trap->name, status, new_pid,
+                   cmdline, imagepath, dllpath, curdir);
             break;
     }
 
     g_free(cmdline);
+    g_free(curdir);
     if (cmdline_us) vmi_free_unicode_str(cmdline_us);
     if (imagepath_us) vmi_free_unicode_str(imagepath_us);
+    if (dllpath_us) vmi_free_unicode_str(dllpath_us);
 }
 
 static vmi_pid_t get_pid_from_handle(procmon* f, drakvuf_t drakvuf, drakvuf_trap_info_t* info, addr_t handle)
 {
-    addr_t process = drakvuf_get_current_process(drakvuf, info->vcpu);
-    if (!process) return 0;
+    if (handle == 0 || handle == UINT64_MAX) return info->proc_data.pid;
 
-    addr_t obj = drakvuf_get_obj_by_handle(drakvuf, process, handle);
+    if (!info->proc_data.base_addr ) return 0;
+
+    addr_t obj = drakvuf_get_obj_by_handle(drakvuf, info->proc_data.base_addr, handle);
     if (!obj) return 0;
 
     addr_t eprocess_base = obj + f->object_header_body;
@@ -208,7 +232,7 @@ static event_response_t process_creation_return_hook(drakvuf_t drakvuf, drakvuf_
         return 0;
     }
 
-    if (info->regs->rsp != wrapper->target_rsp)
+    if (info->regs->rsp <= wrapper->target_rsp)
     {
         return 0;
     }
@@ -243,46 +267,6 @@ static event_response_t process_creation_return_hook(drakvuf_t drakvuf, drakvuf_
     print_process_creation_result(f, drakvuf, info, status, new_pid, user_process_parameters_addr);
 
     return 0;
-}
-
-static addr_t get_function_argument(drakvuf_t drakvuf, const drakvuf_trap_info_t* info, int narg)
-{
-    procmon* f = (procmon*)info->trap->data;
-    if (f->pm == VMI_PM_IA32E)
-    {
-        switch (narg)
-        {
-            case 1:
-                return info->regs->rcx;
-            case 2:
-                return info->regs->rdx;
-            case 3:
-                return info->regs->r8;
-            case 4:
-                return info->regs->r9;
-        }
-
-        access_context_t ctx =
-        {
-            .translate_mechanism = VMI_TM_PROCESS_DTB,
-            .dtb = info->regs->cr3,
-            .addr = info->regs->rsp + narg * 8,
-        };
-
-        addr_t addr;
-        vmi_instance_t vmi = drakvuf_lock_and_get_vmi(drakvuf);
-        if (VMI_FAILURE == vmi_read_addr(vmi, &ctx, &addr))
-        {
-            addr = 0;
-        }
-        drakvuf_release_vmi(drakvuf);
-        return addr;
-    }
-    else
-    {
-        // TODO: Implement and test for 32bit guests.
-        return 0;
-    }
 }
 
 static addr_t get_function_ret_addr(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
@@ -340,7 +324,7 @@ static event_response_t create_user_process_hook(
     data->plugin = f;
     data->target_cr3 = info->regs->cr3;
     data->target_thread = thread;
-    data->target_rsp = info->regs->rsp + 8;
+    data->target_rsp = info->regs->rsp;
     data->new_process_handle_addr = process_handle_addr;
     data->user_process_parameters_addr = user_process_parameters_addr;
 
@@ -365,28 +349,33 @@ static event_response_t terminate_process_hook(
 
     vmi_pid_t exit_pid = get_pid_from_handle(f, drakvuf, info, process_handle);
 
+    char exit_status_buf[NTSTATUS_MAX_FORMAT_STR_SIZE] = {0};
+    const char* exit_status_str = ntstatus_to_string(ntstatus_t(exit_status));
+    if (!exit_status_str)
+        exit_status_str = ntstatus_format_string(ntstatus_t(exit_status), exit_status_buf, sizeof(exit_status_buf));
+
     switch ( f->format )
     {
         case OUTPUT_CSV:
-            printf("procmon," FORMAT_TIMEVAL ",%" PRIu32 ",0x%" PRIx64 ",\"%s\",%" PRIi64 ",%s,%d,0x%" PRIx64 "\n",
+            printf("procmon," FORMAT_TIMEVAL ",%" PRIu32 ",0x%" PRIx64 ",\"%s\",%" PRIi64 ",%s,%d,0x%" PRIx64 ",%s\n",
                    UNPACK_TIMEVAL(info->timestamp), info->vcpu, info->regs->cr3, info->proc_data.name,
-                   info->proc_data.userid, info->trap->name, exit_pid, exit_status);
+                   info->proc_data.userid, info->trap->name, exit_pid, exit_status, exit_status_str);
             break;
 
         case OUTPUT_KV:
             printf("Plugin=procmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\","
-                   "Method=%s,ExitPid=%d,ExitStatus=0x%" PRIx64 "\n",
+                   "Method=%s,ExitPid=%d,ExitStatus=0x%" PRIx64 ",ExitStatusStr=%s\n",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                   info->trap->name, exit_pid, exit_status);
+                   info->trap->name, exit_pid, exit_status, exit_status_str);
             break;
 
         default:
         case OUTPUT_DEFAULT:
             printf("[PROCMON] TIME:" FORMAT_TIMEVAL " VCPU:%" PRIu32 " CR3:0x%" PRIx64 ", EPROCESS:0x%" PRIx64
-                   ", PID:%d, PPID:%d, \"%s\" %s:%" PRIi64 " %s:%d:0x%" PRIx64 "\n",
+                   ", PID:%d, PPID:%d, \"%s\" %s:%" PRIi64 " %s:%d:0x%" PRIx64 ":%s\n",
                    UNPACK_TIMEVAL(info->timestamp), info->vcpu, info->regs->cr3, info->proc_data.base_addr,
                    info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                   USERIDSTR(drakvuf), info->proc_data.userid, info->trap->name, exit_pid, exit_status);
+                   USERIDSTR(drakvuf), info->proc_data.userid, info->trap->name, exit_pid, exit_status, exit_status_str);
             break;
     }
 
@@ -396,26 +385,26 @@ static event_response_t terminate_process_hook(
 static event_response_t create_user_process_hook_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 {
     // PHANDLE ProcessHandle
-    addr_t process_handle_addr = get_function_argument(drakvuf, info, 1);
+    addr_t process_handle_addr = drakvuf_get_function_argument(drakvuf, info, 1);
     // PRTL_USER_PROCESS_PARAMETERS RtlUserProcessParameters
-    addr_t user_process_parameters_addr = get_function_argument(drakvuf, info, 9);
+    addr_t user_process_parameters_addr = drakvuf_get_function_argument(drakvuf, info, 9);
     return create_user_process_hook(drakvuf, info, process_handle_addr, user_process_parameters_addr);
 }
 
 static event_response_t terminate_process_hook_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 {
     // HANDLE ProcessHandle
-    addr_t process_handle = get_function_argument(drakvuf, info, 1);
+    addr_t process_handle = drakvuf_get_function_argument(drakvuf, info, 1);
     // NTSTATUS ExitStatus
-    addr_t exit_status = get_function_argument(drakvuf, info, 2);
+    addr_t exit_status = drakvuf_get_function_argument(drakvuf, info, 2);
     return terminate_process_hook(drakvuf, info, process_handle, exit_status);
 }
 
-static void register_trap( drakvuf_t drakvuf, const char* rekall_profile, const char* syscall_name,
+static void register_trap( drakvuf_t drakvuf, const char* syscall_name,
                            drakvuf_trap_t* trap,
                            event_response_t(*hook_cb)( drakvuf_t drakvuf, drakvuf_trap_info_t* info ) )
 {
-    if ( !drakvuf_get_function_rva( rekall_profile, syscall_name, &trap->breakpoint.rva) ) throw -1;
+    if ( !drakvuf_get_function_rva( drakvuf, syscall_name, &trap->breakpoint.rva) ) throw -1;
 
     trap->name = syscall_name;
     trap->cb   = hook_cb;
@@ -425,26 +414,33 @@ static void register_trap( drakvuf_t drakvuf, const char* rekall_profile, const 
 
 
 procmon::procmon(drakvuf_t drakvuf, const void* config, output_format_t output)
-    : result_traps{}
+    : result_traps {}
 {
-    const char* rekall_profile = (const char*)config;
-
-    vmi_instance_t vmi = drakvuf_lock_and_get_vmi(drakvuf);
-    this->pm = vmi_get_page_mode(vmi, 0);
-    drakvuf_release_vmi(drakvuf);
-
     this->format = output;
 
-    if (!drakvuf_get_struct_member_rva(rekall_profile, "_RTL_USER_PROCESS_PARAMETERS", "CommandLine", &this->command_line))
+    if (!drakvuf_get_struct_member_rva(drakvuf, "_RTL_USER_PROCESS_PARAMETERS", "CommandLine", &this->command_line))
         throw -1;
-    if (!drakvuf_get_struct_member_rva(rekall_profile, "_RTL_USER_PROCESS_PARAMETERS", "ImagePathName", &this->image_path_name))
+    if (!drakvuf_get_struct_member_rva(drakvuf, "_RTL_USER_PROCESS_PARAMETERS", "ImagePathName", &this->image_path_name))
         throw -1;
-    if ( !drakvuf_get_struct_member_rva(rekall_profile, "_OBJECT_HEADER", "Body", &this->object_header_body) )
+    if (!drakvuf_get_struct_member_rva(drakvuf, "_RTL_USER_PROCESS_PARAMETERS", "DllPath", &this->dll_path))
+        throw -1;
+    addr_t current_directory_offset;
+    if (!drakvuf_get_struct_member_rva(drakvuf, "_RTL_USER_PROCESS_PARAMETERS", "CurrentDirectory", &current_directory_offset))
+        throw -1;
+    addr_t curdir_handle_offset;
+    if (!drakvuf_get_struct_member_rva(drakvuf, "_CURDIR", "Handle", &curdir_handle_offset))
+        throw -1;
+    addr_t curdir_dospath_offset;
+    if (!drakvuf_get_struct_member_rva(drakvuf, "_CURDIR", "DosPath", &curdir_dospath_offset))
+        throw -1;
+    this->current_directory_handle = current_directory_offset + curdir_handle_offset;
+    this->current_directory_dospath = current_directory_offset + curdir_dospath_offset;
+    if ( !drakvuf_get_struct_member_rva(drakvuf, "_OBJECT_HEADER", "Body", &this->object_header_body) )
         throw -1;
 
     assert(sizeof(traps) / sizeof(traps[0]) > 1);
-    register_trap(drakvuf, rekall_profile, "NtCreateUserProcess", &traps[0], create_user_process_hook_cb);
-    register_trap(drakvuf, rekall_profile, "NtTerminateProcess", &traps[1], terminate_process_hook_cb);
+    register_trap(drakvuf, "NtCreateUserProcess", &traps[0], create_user_process_hook_cb);
+    register_trap(drakvuf, "NtTerminateProcess", &traps[1], terminate_process_hook_cb);
 }
 
 procmon::~procmon()
