@@ -2,10 +2,6 @@
 	path = xen
 	url = https://github.com/tklengyel/xen
 	ignore = dirty
-[submodule "libvmi"]
-	path = libvmi
-	url = https://github.com/saimoon/libvmi
-	ignore = dirty
 [submodule "drakvuf-doppelganging"]
 	path = drakvuf-doppelganging
 	url = https://github.com/tklengyel/drakvuf-doppelganging.git
