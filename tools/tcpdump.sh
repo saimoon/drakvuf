@@ -114,9 +114,6 @@ RUNFILE=$3
 OUTPUTFOLDER=$4
 ANALYSIS_ID=${RUNFILE:0:36}
 
-
-echo "[-] DEBUG ${RUNFILE:37} - write tcpdump.pcap file on $OUTPUTFOLDER/$ANALYSIS_ID/ folder."
-
 tcpdump -i xenbr1.$VLAN -n -U -w $OUTPUTFOLDER/$ANALYSIS_ID/tcpdump.pcap 1>/dev/null 2>&1
 
 exit $?;

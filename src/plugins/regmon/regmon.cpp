@@ -153,7 +153,6 @@ static void print_registry_call_info(drakvuf_t drakvuf, drakvuf_trap_info_t* inf
         case OUTPUT_KV:
             printf("Plugin=regmon,Time=" FORMAT_TIMEVAL ",PID=%d,PPID=%d,ProcessName=\"%s\",Method=%s,Key=\"%s\"",
                    UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
-                   UNPACK_TIMEVAL(info->timestamp), info->proc_data.pid, info->proc_data.ppid, info->proc_data.name,
                    info->trap->name, key_name);
             if (value_name)
                 printf(",ValueName=\"%s\"", value_name);

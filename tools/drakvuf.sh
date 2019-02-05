@@ -119,24 +119,16 @@ TCPIPREKALL=/home/simone/vm/win10/windows10prox64.tcpip.rekall.json
 ANALYSIS_ID=${RUNFILE:0:36}
 CMD="C:\\Users\\Athos\\Desktop\\${RUNFILE:37}"
 
-echo "[-] DEBUG ${RUNFILE:37} - call the drakvuf..."
-drakvuf -r $REKALL -x proctracer -d $DOMAIN -i $PID -e "$CMD" -D $OUTPUTFOLDER/$ANALYSIS_ID -o kv -T $TCPIPREKALL -t 60 1>$OUTPUTFOLDER/$ANALYSIS_ID/drakvuf.log 2>&1
-echo "[-] DEBUG ${RUNFILE:37} - call the drakvuf...DONE"
+drakvuf -r $REKALL -x proctracer -d $DOMAIN -i $PID -e "$CMD" -D $OUTPUTFOLDER/$ANALYSIS_ID -o kv -T $TCPIPREKALL -j 0 -t 300 1>$OUTPUTFOLDER/$ANALYSIS_ID/drakvuf.log 2>&1
 
 RET=$?
 
 TCPDUMPPID=$(ps aux | grep "tcpdump -i xenbr1.$VLAN" | grep -v grep | awk -F" " '{print $2}')
-echo "[-] DEBUG ${RUNFILE:37} -kill tcpdump..."
 kill -9 $TCPDUMPPID 1>/dev/null 2>&1
-echo "[-] DEBUG ${RUNFILE:37} -kill tcpdump...DONE"
 
 # workaround
-echo "[-] DEBUG ${RUNFILE:37} - rename drakvuf.log into $ANALYSIS_ID..."
+sleep 5s
 mv $OUTPUTFOLDER/$ANALYSIS_ID/drakvuf.log $OUTPUTFOLDER/$ANALYSIS_ID/$ANALYSIS_ID
-echo "[-] DEBUG ${RUNFILE:37} - rename drakvuf.log into $ANALYSIS_ID...DONE"
-
-echo "[-] DEBUG ${RUNFILE:37} - remove folder $RUNFOLDER/$ANALYSIS_ID..."
-rm -r $RUNFOLDER/$ANALYSIS_ID 1>/dev/null 2>&1
-echo "[-] DEBUG ${RUNFILE:37} - remove folder $RUNFOLDER/$ANALYSIS_ID...DONE"
+#rm -r $RUNFOLDER/$ANALYSIS_ID 1>/dev/null 2>&1
 
 exit $RET;
