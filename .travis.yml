@@ -44,6 +44,17 @@ matrix:
           fi
 
 #
+# cppcheck
+#
+    - env:
+        - TEST="cppcheck"
+      before_install:
+        - sudo apt-get update
+        - sudo apt-get -q -y install cppcheck
+      script:
+        - cppcheck --error-exitcode=1 --force ./src
+
+#
 # compile test
 #
     - env:
