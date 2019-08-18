@@ -282,9 +282,16 @@ struct process_information_64
 static int patch_payload(injector_t injector, unsigned char* addr)
 {
     // First byte at which each variable instanciation start in the shellcode.
+/* -- tklengyel drakvuf-doppelganging offsets --
     addr_t offset_target_process = 0xa;
     addr_t offset_binary_buffer = 0xd0b;
     addr_t offset_binary_size = 0xd22;
+*/
+    // saimoon doppelganging payload offsets --
+    addr_t offset_target_process = 0x28;
+    addr_t offset_binary_buffer = 0xd29;
+    addr_t offset_binary_size = 0xd40;
+
     addr_t tmp_baddr = injector->binary_addr;
     addr_t tmp_bsize = injector->binary_size;
     unsigned char* tmp = NULL;
@@ -756,7 +763,9 @@ static event_response_t inject_payload(drakvuf_t drakvuf, drakvuf_trap_info_t* i
     // present in the guest's filesystem.
     if (INJECT_METHOD_DOPP == injector->method)
     {
+/* SIMONE: Here to disable PspCallProcessNotifyRoutines
         addr_t kernbase = 0, process_notify_rva = 0;
+*/
 
         injector->binary_addr = injector->payload_addr + injector->payload_size;
 
@@ -777,6 +786,7 @@ static event_response_t inject_payload(drakvuf_t drakvuf, drakvuf_trap_info_t* i
             return 0;
         }
 
+/* SIMONE: Here to disable PspCallProcessNotifyRoutines
         // Get address of PspCallProcessNotifyRoutines() from the rekall profile
         if ( !drakvuf_get_function_rva(drakvuf, "PspCallProcessNotifyRoutines", &process_notify_rva) )
         {
@@ -786,6 +796,7 @@ static event_response_t inject_payload(drakvuf_t drakvuf, drakvuf_trap_info_t* i
 
         kernbase = drakvuf_get_kernel_base(drakvuf);
         injector->process_notify = kernbase + process_notify_rva;
+*/
 
         // Patch payload
         PRINT_DEBUG("Patching the shellcode with user inputs..\n");
@@ -824,6 +835,7 @@ static event_response_t inject_payload(drakvuf_t drakvuf, drakvuf_trap_info_t* i
     // want to inject will never run. We want to place a breakpoint on it to
     // bypass this call.
 #ifdef ENABLE_DOPPELGANGING
+/* SIMONE: Here to disable PspCallProcessNotifyRoutines
     if (INJECT_METHOD_DOPP == injector->method)
     {
         // Save breakpoint address to restore it latter
@@ -838,6 +850,7 @@ static event_response_t inject_payload(drakvuf_t drakvuf, drakvuf_trap_info_t* i
         injector->status = STATUS_BP_HIT;
     }
     else
+*/
 #endif
     {
         if (!injector_set_hijacked(injector, info))
@@ -1216,6 +1229,7 @@ static bool inject(drakvuf_t drakvuf, injector_t injector)
 static bool load_file_to_memory(addr_t* output, size_t* size, const char* file)
 {
     size_t payload_size = 0;
+    size_t fread_size = 0;
     unsigned char* data = NULL;
     FILE* fp = fopen(file, "rb");
 
@@ -1234,7 +1248,8 @@ static bool load_file_to_memory(addr_t* output, size_t* size, const char* file)
         return false;
     }
 
-    if ( payload_size != fread(data, payload_size, 1, fp) )
+    fread_size = fread(data, payload_size, 1, fp);
+    if ( !fread_size && ( payload_size != fread_size ) )
     {
         g_free(data);
         fclose(fp);
@@ -1304,6 +1319,20 @@ static void print_injection_info(output_format_t format, const char* file, injec
                            UNPACK_TIMEVAL(t), injector->target_pid, process_name, escaped_arguments, injector->pid, injector->tid);
                     break;
 
+                case OUTPUT_JSON:
+                    printf( "{"
+                    "\"Plugin\" : \"inject\","
+                    "\"TimeStamp\" :" "\"" FORMAT_TIMEVAL "\","
+                    "\"Status\": \"Success\","
+                    "\"PID\": %u,"
+                    "\"ProcessName\": %s,"
+                    "\"Arguments\": \"%s\","
+                    "\"InjectedPid\": %u,"
+                    "\"InjectedTid\" : %d }\n",
+                    UNPACK_TIMEVAL(t),
+                    injector->target_pid, process_name, escaped_arguments, injector->pid, injector->tid);
+                    break;
+
                 default:
                 case OUTPUT_DEFAULT:
                     printf("[INJECT] TIME:" FORMAT_TIMEVAL " STATUS:SUCCESS PID:%u FILE:\"%s\" ARGUMENTS:\"%s\" INJECTED_PID:%u INJECTED_TID:%u\n",
@@ -1320,6 +1349,14 @@ static void print_injection_info(output_format_t format, const char* file, injec
 
                 case OUTPUT_KV:
                     printf("inject Time=" FORMAT_TIMEVAL ",Status=Timeout\n", UNPACK_TIMEVAL(t));
+                    break;
+
+                case OUTPUT_JSON:
+                    printf( "{"
+                    "\"Plugin\" : \"inject\","
+                    "\"TimeStamp\" :" "\"" FORMAT_TIMEVAL "\","
+                    "\"Status\": \"Timeout\"}\n",
+                    UNPACK_TIMEVAL(t));
                     break;
 
                 default:
@@ -1339,6 +1376,14 @@ static void print_injection_info(output_format_t format, const char* file, injec
                     printf("inject Time=" FORMAT_TIMEVAL ",Status=Crash\n", UNPACK_TIMEVAL(t));
                     break;
 
+                case OUTPUT_JSON:
+                    printf( "{"
+                    "\"Plugin\" : \"inject\","
+                    "\"TimeStamp\" :" "\"" FORMAT_TIMEVAL "\","
+                    "\"Status\": \"Crash\"}\n",
+                    UNPACK_TIMEVAL(t));
+                    break;
+
                 default:
                 case OUTPUT_DEFAULT:
                     printf("[INJECT] TIME:" FORMAT_TIMEVAL " STATUS:Crash\n", UNPACK_TIMEVAL(t));
@@ -1354,6 +1399,14 @@ static void print_injection_info(output_format_t format, const char* file, injec
 
                 case OUTPUT_KV:
                     printf("inject Time=" FORMAT_TIMEVAL ",Status=PrematureBreak\n", UNPACK_TIMEVAL(t));
+                    break;
+
+                case OUTPUT_JSON:
+                    printf( "{"
+                    "\"Plugin\" : \"inject\","
+                    "\"TimeStamp\" :" "\"" FORMAT_TIMEVAL "\","
+                    "\"Status\": \"PrematureBreak\"}\n",
+                    UNPACK_TIMEVAL(t));
                     break;
 
                 default:
@@ -1373,6 +1426,19 @@ static void print_injection_info(output_format_t format, const char* file, injec
                 case OUTPUT_KV:
                     printf("inject Time=" FORMAT_TIMEVAL ",Status=Error,ErrorCode=%d,Error=\"%s\"\n",
                            UNPACK_TIMEVAL(t), injector->error_code.code, injector->error_code.string);
+                    break;
+
+                case OUTPUT_JSON:
+
+                    printf( "{"
+                    "\"Plugin\" : \"inject\","
+                    "\"TimeStamp\" :" "\"" FORMAT_TIMEVAL "\","
+                    "\"Status\": \"PrematureBreak\","
+                    "\"ErrorCode\": %d,"
+                    "\"Error\": \"%s\"}\n",
+                    UNPACK_TIMEVAL(t),
+                    injector->error_code.code, injector->error_code.string);
+
                     break;
 
                 default:
@@ -1447,8 +1513,10 @@ static addr_t get_function_va(drakvuf_t drakvuf, addr_t eprocess_base, char cons
 static bool initialize_injector_functions(drakvuf_t drakvuf, injector_t injector, const char* file, const char* binary_path)
 {
     addr_t eprocess_base = 0;
-    if ( !drakvuf_find_process(drakvuf, injector->target_pid, NULL, &eprocess_base) )
+    if ( !drakvuf_find_process(drakvuf, injector->target_pid, NULL, &eprocess_base) ) {
+        PRINT_DEBUG("Failed: drakvuf_find_process()\n");
         return false;
+    }
 
     // Get the offsets from the Rekall profile
     if ( !drakvuf_get_struct_members_array_rva(drakvuf, offset_names, OFFSET_MAX, injector->offsets) )
@@ -1467,8 +1535,10 @@ static bool initialize_injector_functions(drakvuf_t drakvuf, injector_t injector
     else if (INJECT_METHOD_SHELLCODE == injector->method || INJECT_METHOD_DOPP == injector->method)
     {
         // Read shellcode from a file
-        if ( !load_file_to_memory(&injector->payload, &injector->payload_size, file) )
+        if ( !load_file_to_memory(&injector->payload, &injector->payload_size, file) ) {
+            PRINT_DEBUG("Failed load_file_to_memory()\n");
             return false;
+        }
 
         if (INJECT_METHOD_DOPP == injector->method)
         {
@@ -1481,8 +1551,10 @@ static bool initialize_injector_functions(drakvuf_t drakvuf, injector_t injector
             }
 
             // Read binary to inject from a file
-            if ( !load_file_to_memory(&injector->binary, &injector->binary_size, binary_path) )
+            if ( !load_file_to_memory(&injector->binary, &injector->binary_size, binary_path) ) {
+                PRINT_DEBUG("Failed DOPP load_file_to_memory()\n");
                 return false;
+            }
         }
 
         injector->memset = get_function_va(drakvuf, eprocess_base, "ntdll.dll", "memset", injector->global_search);
