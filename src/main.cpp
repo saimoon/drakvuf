@@ -509,6 +509,13 @@ int main(int argc, char** argv)
     drakvuf->loop(timeout);
     rc = 0;
 
+    if (output == OUTPUT_JSON) {
+        printf( "{"
+                "\"Plugin\" : \"terminate\""
+                "}\n" );
+        printf("]\n");
+    }
+
     PRINT_DEBUG("Finished DRAKVUF loop\n");
 
 exit:

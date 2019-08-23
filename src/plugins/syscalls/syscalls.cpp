@@ -165,7 +165,7 @@ static void print_header(output_format_t format, drakvuf_t drakvuf, const drakvu
             escaped_pname = drakvuf_escape_str(info->proc_data.name);
             printf( "{"
                     "\"Plugin\" : \"syscall\","
-                    "\"TimeStamp\" :" "\"" FORMAT_TIMEVAL "\","
+                    "\"TimeStamp\" :" FORMAT_TIMEVAL ","
                     "\"VCPU\": %" PRIu32 ","
                     "\"CR3\": %" PRIu64 ","
                     "\"ProcessName\": %s,"
@@ -175,7 +175,7 @@ static void print_header(output_format_t format, drakvuf_t drakvuf, const drakvu
                     "\"PPID\": %d,"
                     "\"Module\": \"%s\","
                     "\"Method\": \"%s\","
-                    "\"Args\": [",
+                    "\"Args\": {",
                     UNPACK_TIMEVAL(info->timestamp),
                     info->vcpu, info->regs->cr3, escaped_pname,
                     USERIDSTR(drakvuf), info->proc_data.userid,
@@ -250,15 +250,15 @@ static void print_json_arg(syscalls* s, drakvuf_t drakvuf, drakvuf_trap_info_t* 
     if ( str )
     {
         gchar* escaped = drakvuf_escape_str(str);
-        printf("{\"%s\" : %s}", arg.name, escaped);
+        printf("\"%s\" : %s", arg.name, escaped);
         g_free(escaped);
     }
     else
     {
         if ( 4 == s->reg_size )
-            printf("{\"%s\" :%"  PRIu32 "}", arg.name, static_cast<uint32_t>(val));
+            printf("\"%s\" :%"  PRIu32 "", arg.name, static_cast<uint32_t>(val));
         else
-            printf("{\"%s\" :%" PRIu64 "}", arg.name, static_cast<uint64_t>(val));
+            printf("\"%s\" :%" PRIu64 "", arg.name, static_cast<uint64_t>(val));
     }
 
     if (i < sc->num_args-1)
@@ -332,7 +332,7 @@ static void print_footer(output_format_t format, uint32_t nargs)
             break;
         case OUTPUT_JSON:
             // close JSON args array and document
-            printf("] }\n");
+            printf("} },\n");
             break;
         default:
         case OUTPUT_DEFAULT:

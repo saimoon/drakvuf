@@ -1302,6 +1302,9 @@ static void print_injection_info(output_format_t format, const char* file, injec
         arguments = "";
     }
 
+    if (format == OUTPUT_JSON)
+        printf("[\n");
+
     char* escaped_arguments = g_strescape(arguments, NULL);
 
     switch (injector->result)
@@ -1322,13 +1325,13 @@ static void print_injection_info(output_format_t format, const char* file, injec
                 case OUTPUT_JSON:
                     printf( "{"
                     "\"Plugin\" : \"inject\","
-                    "\"TimeStamp\" :" "\"" FORMAT_TIMEVAL "\","
+                    "\"TimeStamp\" :" FORMAT_TIMEVAL ","
                     "\"Status\": \"Success\","
                     "\"PID\": %u,"
-                    "\"ProcessName\": %s,"
+                    "\"ProcessName\": \"%s\","
                     "\"Arguments\": \"%s\","
                     "\"InjectedPid\": %u,"
-                    "\"InjectedTid\" : %d }\n",
+                    "\"InjectedTid\" : %d },\n",
                     UNPACK_TIMEVAL(t),
                     injector->target_pid, process_name, escaped_arguments, injector->pid, injector->tid);
                     break;
@@ -1354,8 +1357,8 @@ static void print_injection_info(output_format_t format, const char* file, injec
                 case OUTPUT_JSON:
                     printf( "{"
                     "\"Plugin\" : \"inject\","
-                    "\"TimeStamp\" :" "\"" FORMAT_TIMEVAL "\","
-                    "\"Status\": \"Timeout\"}\n",
+                    "\"TimeStamp\" :" FORMAT_TIMEVAL ","
+                    "\"Status\": \"Timeout\"},\n",
                     UNPACK_TIMEVAL(t));
                     break;
 
@@ -1379,8 +1382,8 @@ static void print_injection_info(output_format_t format, const char* file, injec
                 case OUTPUT_JSON:
                     printf( "{"
                     "\"Plugin\" : \"inject\","
-                    "\"TimeStamp\" :" "\"" FORMAT_TIMEVAL "\","
-                    "\"Status\": \"Crash\"}\n",
+                    "\"TimeStamp\" :" FORMAT_TIMEVAL ","
+                    "\"Status\": \"Crash\"},\n",
                     UNPACK_TIMEVAL(t));
                     break;
 
@@ -1404,8 +1407,8 @@ static void print_injection_info(output_format_t format, const char* file, injec
                 case OUTPUT_JSON:
                     printf( "{"
                     "\"Plugin\" : \"inject\","
-                    "\"TimeStamp\" :" "\"" FORMAT_TIMEVAL "\","
-                    "\"Status\": \"PrematureBreak\"}\n",
+                    "\"TimeStamp\" :" FORMAT_TIMEVAL ","
+                    "\"Status\": \"PrematureBreak\"},\n",
                     UNPACK_TIMEVAL(t));
                     break;
 
@@ -1432,10 +1435,10 @@ static void print_injection_info(output_format_t format, const char* file, injec
 
                     printf( "{"
                     "\"Plugin\" : \"inject\","
-                    "\"TimeStamp\" :" "\"" FORMAT_TIMEVAL "\","
-                    "\"Status\": \"PrematureBreak\","
+                    "\"TimeStamp\" :" FORMAT_TIMEVAL ","
+                    "\"Status\": \"Error\","
                     "\"ErrorCode\": %d,"
-                    "\"Error\": \"%s\"}\n",
+                    "\"Error\": \"%s\"},\n",
                     UNPACK_TIMEVAL(t),
                     injector->error_code.code, injector->error_code.string);
 
