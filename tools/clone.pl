@@ -120,7 +120,7 @@ use warnings;
 ## Settings
 #
 # The LVM volume group
-our $lvm_vg = "t0vg";
+our $lvm_vg = "honeyse-xen";
 # Clone network bridge name
 our $clone_bridge = "xenbr1";
 # Vif script to pass to clone Xen config.
@@ -234,6 +234,10 @@ sub clone {
     `$xl save -c $origin /tmp/drakvuf_pipe_$clone 2>&1 | $xl restore -p -e /tmp/$clone.config /tmp/drakvuf_pipe_$clone 2>&1`;
     my $cloneID = `$xl domid $clone`;
     chomp($cloneID);
+
+    `$xl unpause $clone 2>&1`;
+    `$xl unpause $clone 2>&1`;
+
     print "$cloneID";
 }
 
